@@ -8,124 +8,127 @@ type DecoderResult<T> = Result<T, DecoderError>;
 #[derive(Debug)]
 enum DecoderState {
     Init,
-    MovFromRegMemToRegMemInit {
+    MovRegMemToFromReg {
         reg_is_dest: bool,
         is_word: bool,
+        state: MovRegMemToFromRegState,
     },
-    MovDirectAddressInit {
-        reg_is_dest: bool,
-        reg: Register,
-    },
-    MovDirectAddressLowDispRead {
-        reg_is_dest: bool,
-        reg: Register,
-        low_disp: u8,
-    },
-    MovEffectiveAddressDispInit {
-        reg_is_dest: bool,
-        reg: Register,
-        effective_addr_calc: EffectiveAddressCalculation,
-        is_disp16: bool,
-    },
-    MovEffectiveAddressDisp16 {
-        reg_is_dest: bool,
-        reg: Register,
-        effective_addr_calc: EffectiveAddressCalculation,
-        low_disp: u8,
-    },
-    MovImmediateToRegMemInit {
+    MovImmToRegMem {
         is_word: bool,
+        state: MovImmToRegMemState,
     },
-    MovImmediateToRegInit {
-        reg: Register,
-        is_word: bool,
-    },
-    MovImmediateToDirectAddressInit {
-        is_word: bool,
-    },
-    MovImmediateToEffectiveAddrMem0Init {
-        effective_addr_calc: EffectiveAddressCalculation,
-        is_word: bool,
-    },
-    MovImmediateToEffectiveAddrDispInit {
-        effective_addr_calc: EffectiveAddressCalculation,
-        is_disp16: bool,
-        is_word: bool,
-    },
-    MovImmediate16ToRegInit {
-        reg: Register,
-        low_imm: u8,
-    },
-    MovImmediateToDirectAddressDisp8Read {
-        low_disp: u8,
-        is_word: bool,
-    },
-    MovImmediateToDirectAddressDisp16Read {
-        disp16: u16,
-        is_word: bool,
-    },
-    MovImmediate16ToDirectAddressDisp16Init {
-        disp16: u16,
-        low_imm: u8,
-    },
-    MovImmediate16ToEffectiveAddrMem0 {
-        effective_addr_calc: EffectiveAddressCalculation,
-        low_imm: u8,
-    },
-    MovImmediateToEffectiveAddrDisp8Read {
-        effective_addr_calc: EffectiveAddressCalculation,
-        is_disp16: bool,
-        is_word: bool,
-        disp8: u8,
-    },
-    MovImmediateToEffectiveAddrDisp16Read {
-        effective_addr_calc: EffectiveAddressCalculation,
-        is_word: bool,
-        disp16: u16,
-    },
-    MovImmediateToEffectiveAddrDisp8Imm8Read {
-        effective_addr_calc: EffectiveAddressCalculation,
-        disp8: u8,
-        imm8: u8,
-    },
-    MovImmediateToEffectiveAddrDisp16ReadImm8Read {
-        effective_addr_calc: EffectiveAddressCalculation,
-        disp16: u16,
-        imm8: u8,
-    },
-    MovAccMemToAccMemInit {
+    MovAccMemToAccMem {
         acc_to_mem: bool,
         is_word: bool,
-    },
-    MovAccMemToAccMemInitAddrLoRead {
-        acc_to_mem: bool,
-        is_word: bool,
-        addr_lo: u8,
+        state: MovAccMemToAccMemState,
     },
     MovRegMemSRToRegMemSR {
         to_sr: bool,
+        state: MovRegMemSRToRegMemSRState,
     },
-    MovDirAddrSRToDirAddrSR {
-        to_sr: bool,
-        sr: SegmentRegister,
+    ArithRegMemWithRegToEither {
+        op: ArithOperation,
+        reg_is_dest: bool,
+        is_word: bool,
+        state: ArithRegMemWithRegToEitherState,
     },
-    MovEffectAddrSRToEffectAddrSRWithDisp {
-        effective_addr_calc: EffectiveAddressCalculation,
-        to_sr: bool,
-        sr: SegmentRegister,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MovRegMemToFromRegState {
+    Init,
+    DirectAddressReadLowDisp {
+        reg: Register,
+    },
+    DirectAddressReadHighDisp {
+        reg: Register,
+        low_disp: u8,
+    },
+    EffectAddrReadLowDisp {
+        reg: Register,
+        effect_addr: EffectiveAddressCalculation,
         is_disp16: bool,
     },
-    MovDirAddrSRToDirAddrSRLowDispRead {
-        to_sr: bool,
+    EffectAddrReadHighDisp {
+        reg: Register,
+        effect_addr: EffectiveAddressCalculation,
+        low_disp: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MovImmToRegMemState {
+    Init,
+    ToRegReadLowImm {
+        reg: Register,
+    },
+    ToRegReadHighImm {
+        reg: Register,
+        low_imm: u8,
+    },
+    ToDirectAddrReadLowDisp,
+    ToDirectAddrReadHighDisp {
+        low_disp: u8,
+    },
+    ToDirectAddrReadLowImm {
+        disp: u16,
+    },
+    ToDirectAddrReadHighImm {
+        disp: u16,
+        low_imm: u8,
+    },
+    ToEffectAddrReadLowDisp {
+        effect_addr: EffectiveAddressCalculation,
+        is_disp16: bool,
+    },
+    ToEffectAddrReadHighDisp {
+        effect_addr: EffectiveAddressCalculation,
+        low_disp: u8,
+    },
+    ToEffectAddrReadLowImm {
+        effect_addr: EffectiveAddressCalculation,
+        disp: Option<i16>,
+    },
+    ToEffectAddrReadHighImm {
+        effect_addr: EffectiveAddressCalculation,
+        disp: Option<i16>,
+        low_imm: u8,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MovAccMemToAccMemState {
+    ReadAddrLo,
+    ReadAddrHigh { addr_lo: u8 },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MovRegMemSRToRegMemSRState {
+    Init,
+    ToFromDirectAddrReadLowDisp {
+        sr: SegmentRegister,
+    },
+    ToFromDirectAddrReadHighDisp {
         sr: SegmentRegister,
         low_disp: u8,
     },
-    MovEffectAddrSRToEffectAddrSRLowDispRead {
-        effective_addr_calc: EffectiveAddressCalculation,
-        to_sr: bool,
+    ToFromEffectAddrReadLowDisp {
         sr: SegmentRegister,
+        effect_addr: EffectiveAddressCalculation,
+        is_disp16: bool,
+    },
+    ToFromEffectAddrReadHighDisp {
+        sr: SegmentRegister,
+        effect_addr: EffectiveAddressCalculation,
         low_disp: u8,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ArithOperation {
+    ADD,
+    SUB,
+    CMP,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -148,6 +151,28 @@ enum Register {
     DI,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ArithRegMemWithRegToEitherState {
+    Init,
+    DirectAddressReadLowDisp {
+        reg: Register,
+    },
+    DirectAddressReadHighDisp {
+        reg: Register,
+        low_disp: u8,
+    },
+    EffectAddrReadLowDisp {
+        reg: Register,
+        effect_addr: EffectiveAddressCalculation,
+        is_disp16: bool,
+    },
+    EffectAddrReadHighDisp {
+        reg: Register,
+        effect_addr: EffectiveAddressCalculation,
+        low_disp: u8,
+    },
+}
+
 impl Display for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -167,6 +192,16 @@ impl Display for Register {
             Register::BP => f.write_str("bp"),
             Register::SI => f.write_str("si"),
             Register::DI => f.write_str("di"),
+        }
+    }
+}
+
+impl Display for ArithOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArithOperation::ADD => f.write_str("add"),
+            ArithOperation::SUB => f.write_str("sub"),
+            ArithOperation::CMP => f.write_str("cmp"),
         }
     }
 }
@@ -327,6 +362,21 @@ impl Display for SegmentRegister {
     }
 }
 
+impl ArithOperation {
+    fn from_number(number: u8) -> DecoderResult<Self> {
+        Ok(match number {
+            0 => ArithOperation::ADD,
+            5 => ArithOperation::SUB,
+            7 => ArithOperation::CMP,
+            _ => {
+                return Err(DecoderError::GenericError(format!(
+                    "Cannot decode arithmetic operation with value: {number}"
+                )));
+            }
+        })
+    }
+}
+
 #[derive(Debug)]
 enum DecoderError {
     IoError(std::io::Error),
@@ -363,6 +413,9 @@ const MOV_ACCMEM_TO_ACCMEM_OPCODE: u8 = 0xA0;
 const MOV_REGMEMSR_TO_REGMEMSR_OPCODE_MASK: u8 = 0xFD;
 const MOV_REGMEMSR_TO_REGMEMSR_OPCODE: u8 = 0x8C;
 
+const ARITH_REGMEM_WITH_REG_TO_EITHER_OPCODE_MASK: u8 = 0xC4;
+const ARITH_REGMEM_WITH_REG_TO_EITHER_OPCODE: u8 = 0x00;
+
 const D_MASK: u8 = 0x02;
 const D_REG_DST: u8 = 0x02;
 
@@ -384,7 +437,10 @@ const RM_BIT_OFFSET: u8 = 0;
 const RM_VALUE_DIRECT_ACCESS: u8 = 0x06;
 
 const SR_MASK: u8 = 0x18;
-const SR_OFFSET: u8 = 4;
+const SR_OFFSET: u8 = 3;
+
+const ARITHMETIC_OPERATION_MASK: u8 = 0x38;
+const ARITHMETIC_OPERATION_OFFSET: u8 = 3;
 
 #[derive(Debug)]
 struct Decoder {
@@ -407,16 +463,18 @@ impl Decoder {
                     {
                         let d = instruction_byte & D_MASK;
                         let w = instruction_byte & W_MASK;
-                        DecoderState::MovFromRegMemToRegMemInit {
+                        DecoderState::MovRegMemToFromReg {
                             reg_is_dest: d == D_REG_DST,
                             is_word: w == W_WORD,
+                            state: MovRegMemToFromRegState::Init,
                         }
                     } else if instruction_byte & MOV_IMMEDIATE_TO_REGMEM_OPCODE_MASK
                         == MOV_IMMEDIATE_TO_REGMEM_OPCODE
                     {
                         let w = instruction_byte & W_MASK;
-                        DecoderState::MovImmediateToRegMemInit {
+                        DecoderState::MovImmToRegMem {
                             is_word: w == W_WORD,
+                            state: MovImmToRegMemState::Init,
                         }
                     } else if instruction_byte & MOV_IMMEDIATE_TO_REG_OPCODE_MASK
                         == MOV_IMMEDIATE_TO_REG_OPCODE
@@ -424,50 +482,60 @@ impl Decoder {
                         let is_word = 0x1 == ((instruction_byte.clone() >> 3) & 0x1);
 
                         let reg = Register::from_reg_w(instruction_byte.clone() & 0x7, is_word)?;
-                        DecoderState::MovImmediateToRegInit { reg, is_word }
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToRegReadLowImm { reg },
+                        }
                     } else if instruction_byte & MOV_ACCMEM_TO_ACCMEM_OPCODE_MASK
                         == MOV_ACCMEM_TO_ACCMEM_OPCODE
                     {
                         let acc_to_mem = 0x2 == (instruction_byte.clone() & 0x2);
                         let is_word = (instruction_byte & W_MASK) == W_WORD;
 
-                        DecoderState::MovAccMemToAccMemInit {
+                        DecoderState::MovAccMemToAccMem {
                             acc_to_mem,
                             is_word,
+                            state: MovAccMemToAccMemState::ReadAddrLo,
                         }
                     } else if instruction_byte & MOV_REGMEMSR_TO_REGMEMSR_OPCODE_MASK
                         == MOV_REGMEMSR_TO_REGMEMSR_OPCODE
                     {
                         let to_sr = 0x2 == (instruction_byte.clone() & 0x2);
 
-                        DecoderState::MovRegMemSRToRegMemSR { to_sr }
+                        DecoderState::MovRegMemSRToRegMemSR {
+                            to_sr,
+                            state: MovRegMemSRToRegMemSRState::Init,
+                        }
+                    } else if instruction_byte & ARITH_REGMEM_WITH_REG_TO_EITHER_OPCODE_MASK
+                        == ARITH_REGMEM_WITH_REG_TO_EITHER_OPCODE
+                    {
+                        let op = ArithOperation::from_number(
+                            (instruction_byte.clone() & ARITHMETIC_OPERATION_MASK)
+                                >> ARITHMETIC_OPERATION_OFFSET,
+                        )?;
+                        let d = instruction_byte & D_MASK;
+                        let w = instruction_byte & W_MASK;
+                        let reg_is_dest = d == D_REG_DST;
+                        let is_word = w == W_WORD;
+
+                        DecoderState::ArithRegMemWithRegToEither {
+                            op,
+                            reg_is_dest,
+                            is_word,
+                            state: ArithRegMemWithRegToEitherState::Init,
+                        }
                     } else {
                         return Err(DecoderError::GenericError(String::from("unknown opcode")));
                     }
                 }
-                DecoderState::MovFromRegMemToRegMemInit {
+                DecoderState::MovRegMemToFromReg {
                     reg_is_dest,
                     is_word,
-                } => match instruction_byte & MOD_MASK {
-                    MOD_REG => {
-                        self.gen_mov_reg_to_reg(
-                            instruction_byte.clone(),
-                            reg_is_dest,
-                            is_word,
-                            out,
-                        )?;
-                        DecoderState::Init
-                    }
-                    MOD_MEM_0 => {
-                        if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET) == RM_VALUE_DIRECT_ACCESS
-                        {
-                            let reg = Register::from_reg_w(
-                                (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
-                                is_word,
-                            )?;
-                            DecoderState::MovDirectAddressInit { reg_is_dest, reg }
-                        } else {
-                            self.gen_mov_between_reg_mem_0(
+                    state,
+                } => match state {
+                    MovRegMemToFromRegState::Init => match instruction_byte & MOD_MASK {
+                        MOD_REG => {
+                            self.gen_mov_reg_to_reg(
                                 instruction_byte.clone(),
                                 reg_is_dest,
                                 is_word,
@@ -475,64 +543,119 @@ impl Decoder {
                             )?;
                             DecoderState::Init
                         }
-                    }
-                    mode => {
-                        let reg = Register::from_reg_w(
-                            (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                        MOD_MEM_0 => {
+                            if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET)
+                                == RM_VALUE_DIRECT_ACCESS
+                            {
+                                let reg = Register::from_reg_w(
+                                    (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                    is_word,
+                                )?;
+                                DecoderState::MovRegMemToFromReg {
+                                    reg_is_dest,
+                                    is_word,
+                                    state: MovRegMemToFromRegState::DirectAddressReadLowDisp {
+                                        reg,
+                                    },
+                                }
+                            } else {
+                                self.gen_mov_between_reg_mem_0(
+                                    instruction_byte.clone(),
+                                    reg_is_dest,
+                                    is_word,
+                                    out,
+                                )?;
+                                DecoderState::Init
+                            }
+                        }
+                        mode => {
+                            let reg = Register::from_reg_w(
+                                (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                is_word,
+                            )?;
+                            let effect_addr = EffectiveAddressCalculation::from_rm(
+                                (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
+                            )?;
+                            DecoderState::MovRegMemToFromReg {
+                                reg_is_dest,
+                                is_word,
+                                state: MovRegMemToFromRegState::EffectAddrReadLowDisp {
+                                    reg,
+                                    effect_addr,
+                                    is_disp16: mode == MOD_MEM_2,
+                                },
+                            }
+                        }
+                    },
+                    MovRegMemToFromRegState::DirectAddressReadLowDisp { reg } => {
+                        DecoderState::MovRegMemToFromReg {
+                            reg_is_dest,
                             is_word,
-                        )?;
-                        let effective_addr_calc = EffectiveAddressCalculation::from_rm(
-                            (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
-                        )?;
-                        DecoderState::MovEffectiveAddressDispInit {
-                            reg_is_dest,
-                            reg,
-                            effective_addr_calc,
-                            is_disp16: mode == MOD_MEM_2,
+                            state: MovRegMemToFromRegState::DirectAddressReadHighDisp {
+                                reg: reg.clone(),
+                                low_disp: instruction_byte.clone(),
+                            },
                         }
                     }
-                },
-                DecoderState::MovDirectAddressInit { reg_is_dest, reg } => {
-                    DecoderState::MovDirectAddressLowDispRead {
-                        reg_is_dest,
+                    MovRegMemToFromRegState::DirectAddressReadHighDisp { reg, low_disp } => {
+                        let disp =
+                            ((instruction_byte.clone() as u16) << 8) | (low_disp.to_owned() as u16);
+                        if reg_is_dest {
+                            out.write_all(format!("mov {reg}, [{disp}]\n").as_bytes())?;
+                        } else {
+                            out.write_all(format!("mov [{disp}], {reg}\n").as_bytes())?;
+                        }
+                        DecoderState::Init
+                    }
+                    MovRegMemToFromRegState::EffectAddrReadLowDisp {
                         reg,
-                        low_disp: instruction_byte.clone(),
-                    }
-                }
-                DecoderState::MovDirectAddressLowDispRead {
-                    reg_is_dest,
-                    reg,
-                    low_disp,
-                } => {
-                    let disp =
-                        (((instruction_byte.clone() as u16) << 8) | (low_disp as u16)) as i16;
-                    if reg_is_dest {
-                        out.write_all(format!("mov {reg}, [{disp}]\n").as_bytes())?;
-                    } else {
-                        out.write_all(format!("mov [{disp}], {reg}\n").as_bytes())?;
-                    }
-                    DecoderState::Init
-                }
-                DecoderState::MovEffectiveAddressDispInit {
-                    reg_is_dest,
-                    reg,
-                    effective_addr_calc,
-                    is_disp16,
-                } => {
-                    let disp8: u8 = instruction_byte.clone();
-                    if is_disp16 {
-                        DecoderState::MovEffectiveAddressDisp16 {
-                            reg_is_dest,
-                            reg,
-                            effective_addr_calc,
-                            low_disp: disp8,
+                        effect_addr,
+                        is_disp16,
+                    } => {
+                        let low_disp: u8 = instruction_byte.clone();
+                        if is_disp16.to_owned() {
+                            DecoderState::MovRegMemToFromReg {
+                                reg_is_dest,
+                                is_word,
+                                state: MovRegMemToFromRegState::EffectAddrReadHighDisp {
+                                    reg: reg.clone(),
+                                    effect_addr: effect_addr.clone(),
+                                    low_disp,
+                                },
+                            }
+                        } else {
+                            if reg_is_dest {
+                                out.write_all(
+                                    format!(
+                                        "mov {reg}, {}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            } else {
+                                out.write_all(
+                                    format!(
+                                        "mov {}, {reg}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            }
+                            DecoderState::Init
                         }
-                    } else {
+                    }
+                    MovRegMemToFromRegState::EffectAddrReadHighDisp {
+                        reg,
+                        effect_addr,
+                        low_disp,
+                    } => {
+                        let disp =
+                            ((instruction_byte.clone() as u16) << 8) | (low_disp.clone() as u16);
                         if reg_is_dest {
                             out.write_all(
                                 format!(
                                     "mov {reg}, {}\n",
-                                    effective_addr_calc.to_string_with_disp8(disp8 as i8)
+                                    effect_addr.to_string_with_disp16(disp as i16)
                                 )
                                 .as_bytes(),
                             )?;
@@ -540,297 +663,398 @@ impl Decoder {
                             out.write_all(
                                 format!(
                                     "mov {}, {reg}\n",
-                                    effective_addr_calc.to_string_with_disp8(disp8 as i8)
+                                    effect_addr.to_string_with_disp16(disp as i16)
                                 )
                                 .as_bytes(),
                             )?;
                         }
                         DecoderState::Init
                     }
-                }
-                DecoderState::MovEffectiveAddressDisp16 {
-                    reg_is_dest,
-                    reg,
-                    effective_addr_calc,
-                    low_disp,
-                } => {
-                    let disp =
-                        (((instruction_byte.clone() as u16) << 8) | (low_disp as u16)) as i16;
-                    if reg_is_dest {
-                        out.write_all(
-                            format!(
-                                "mov {reg}, {}\n",
-                                effective_addr_calc.to_string_with_disp16(disp)
-                            )
-                            .as_bytes(),
-                        )?;
-                    } else {
-                        out.write_all(
-                            format!(
-                                "mov {}, {reg}\n",
-                                effective_addr_calc.to_string_with_disp16(disp)
-                            )
-                            .as_bytes(),
-                        )?;
-                    }
-                    DecoderState::Init
-                }
-                DecoderState::MovImmediateToRegMemInit { is_word } => {
-                    match instruction_byte & MOD_MASK {
+                },
+                DecoderState::MovImmToRegMem { is_word, state } => match state {
+                    MovImmToRegMemState::Init => match instruction_byte & MOD_MASK {
                         MOD_REG => {
                             let rm = Register::from_reg_w(
                                 (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                                 is_word,
                             )?;
-                            DecoderState::MovImmediateToRegInit { reg: rm, is_word }
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToRegReadLowImm { reg: rm },
+                            }
                         }
                         MOD_MEM_0 => {
                             if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET)
                                 == RM_VALUE_DIRECT_ACCESS
                             {
-                                DecoderState::MovImmediateToDirectAddressInit { is_word }
+                                DecoderState::MovImmToRegMem {
+                                    is_word,
+                                    state: MovImmToRegMemState::ToDirectAddrReadLowDisp,
+                                }
                             } else {
-                                let effective_addr_calc = EffectiveAddressCalculation::from_rm(
+                                let effect_addr = EffectiveAddressCalculation::from_rm(
                                     (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                                 )?;
-                                DecoderState::MovImmediateToEffectiveAddrMem0Init {
-                                    effective_addr_calc,
+                                DecoderState::MovImmToRegMem {
                                     is_word,
+                                    state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                                        effect_addr,
+                                        disp: None,
+                                    },
                                 }
                             }
                         }
                         mode => {
-                            let effective_addr_calc = EffectiveAddressCalculation::from_rm(
+                            let effect_addr = EffectiveAddressCalculation::from_rm(
                                 (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                             )?;
-                            DecoderState::MovImmediateToEffectiveAddrDispInit {
-                                effective_addr_calc,
-                                is_disp16: mode == MOD_MEM_2,
+                            DecoderState::MovImmToRegMem {
                                 is_word,
+                                state: MovImmToRegMemState::ToEffectAddrReadLowDisp {
+                                    effect_addr,
+                                    is_disp16: mode == MOD_MEM_2,
+                                },
                             }
                         }
-                    }
-                }
-                DecoderState::MovImmediateToRegInit { reg, is_word } => {
-                    let imm8 = instruction_byte;
-                    if is_word {
-                        DecoderState::MovImmediate16ToRegInit {
-                            reg,
-                            low_imm: imm8.clone(),
-                        }
-                    } else {
-                        out.write_all(format!("mov {reg}, {imm8}\n").as_bytes())?;
-                        DecoderState::Init
-                    }
-                }
-                DecoderState::MovImmediate16ToRegInit { reg, low_imm } => {
-                    let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                    out.write_all(format!("mov {reg}, {imm16}\n").as_bytes())?;
-                    DecoderState::Init
-                }
-                DecoderState::MovImmediateToDirectAddressInit { is_word } => {
-                    let low_disp = instruction_byte.clone();
-                    DecoderState::MovImmediateToDirectAddressDisp8Read { low_disp, is_word }
-                }
-                DecoderState::MovImmediateToDirectAddressDisp8Read { low_disp, is_word } => {
-                    let disp16 = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                    DecoderState::MovImmediateToDirectAddressDisp16Read { disp16, is_word }
-                }
-                DecoderState::MovImmediateToDirectAddressDisp16Read { disp16, is_word } => {
-                    let imm8 = instruction_byte;
-                    if is_word {
-                        DecoderState::MovImmediate16ToDirectAddressDisp16Init {
-                            disp16,
-                            low_imm: imm8.clone(),
-                        }
-                    } else {
-                        out.write_all(format!("mov byte [{disp16}], {imm8}\n").as_bytes())?;
-                        DecoderState::Init
-                    }
-                }
-                DecoderState::MovImmediate16ToDirectAddressDisp16Init { disp16, low_imm } => {
-                    let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                    out.write_all(format!("mov word [{disp16}], {imm16}\n").as_bytes())?;
-                    DecoderState::Init
-                }
-                DecoderState::MovImmediateToEffectiveAddrMem0Init {
-                    effective_addr_calc,
-                    is_word,
-                } => {
-                    let imm8 = instruction_byte;
-                    if is_word {
-                        DecoderState::MovImmediate16ToEffectiveAddrMem0 {
-                            effective_addr_calc,
-                            low_imm: imm8.clone(),
-                        }
-                    } else {
-                        out.write_all(
-                            format!(
-                                "mov byte {}, {imm8}\n",
-                                effective_addr_calc.to_string_without_disp()
-                            )
-                            .as_bytes(),
-                        )?;
-                        DecoderState::Init
-                    }
-                }
-                DecoderState::MovImmediate16ToEffectiveAddrMem0 {
-                    effective_addr_calc,
-                    low_imm,
-                } => {
-                    let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                    out.write_all(
-                        format!(
-                            "mov word {}, {imm16}\n",
-                            effective_addr_calc.to_string_without_disp()
-                        )
-                        .as_bytes(),
-                    )?;
-                    DecoderState::Init
-                }
-                DecoderState::MovImmediateToEffectiveAddrDispInit {
-                    effective_addr_calc,
-                    is_disp16,
-                    is_word,
-                } => {
-                    let disp8 = instruction_byte.clone();
-                    DecoderState::MovImmediateToEffectiveAddrDisp8Read {
-                        effective_addr_calc,
-                        is_disp16,
-                        is_word,
-                        disp8,
-                    }
-                }
-                DecoderState::MovImmediateToEffectiveAddrDisp8Read {
-                    effective_addr_calc,
-                    is_disp16,
-                    is_word,
-                    disp8,
-                } => {
-                    if is_disp16 {
-                        let disp16 = ((instruction_byte.clone() as u16) << 8) | (disp8 as u16);
-                        DecoderState::MovImmediateToEffectiveAddrDisp16Read {
-                            effective_addr_calc,
-                            is_word,
-                            disp16,
-                        }
-                    } else {
-                        let imm8 = instruction_byte.clone();
+                    },
+                    MovImmToRegMemState::ToRegReadLowImm { reg } => {
+                        let low_imm = instruction_byte.clone();
                         if is_word {
-                            DecoderState::MovImmediateToEffectiveAddrDisp8Imm8Read {
-                                effective_addr_calc,
-                                disp8,
-                                imm8,
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToRegReadHighImm { reg, low_imm },
                             }
                         } else {
-                            out.write_all(
-                                format!(
-                                    "mov byte {}, {imm8}\n",
-                                    effective_addr_calc.to_string_with_disp8(disp8 as i8)
-                                )
-                                .as_bytes(),
-                            )?;
+                            out.write_all(format!("mov {reg}, {low_imm}\n").as_bytes())?;
                             DecoderState::Init
                         }
                     }
-                }
-                DecoderState::MovImmediateToEffectiveAddrDisp8Imm8Read {
-                    effective_addr_calc,
-                    disp8,
-                    imm8,
-                } => {
-                    let imm16 = ((instruction_byte.clone() as u16) << 8) | (imm8 as u16);
-                    out.write_all(
-                        format!(
-                            "mov word {}, {imm16}\n",
-                            effective_addr_calc.to_string_with_disp8(disp8 as i8)
-                        )
-                        .as_bytes(),
-                    )?;
-                    DecoderState::Init
-                }
-                DecoderState::MovImmediateToEffectiveAddrDisp16Read {
-                    effective_addr_calc,
-                    is_word,
-                    disp16,
-                } => {
-                    let imm8 = instruction_byte.clone();
-                    if is_word {
-                        DecoderState::MovImmediateToEffectiveAddrDisp16ReadImm8Read {
-                            effective_addr_calc,
-                            disp16,
-                            imm8,
-                        }
-                    } else {
-                        out.write_all(
-                            format!(
-                                "mov byte {}, {imm8}\n",
-                                effective_addr_calc.to_string_with_disp16(disp16 as i16)
-                            )
-                            .as_bytes(),
-                        )?;
+                    MovImmToRegMemState::ToRegReadHighImm { reg, low_imm } => {
+                        let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
+                        out.write_all(format!("mov {reg}, {imm16}\n").as_bytes())?;
                         DecoderState::Init
                     }
-                }
-                DecoderState::MovImmediateToEffectiveAddrDisp16ReadImm8Read {
-                    effective_addr_calc,
-                    disp16,
-                    imm8,
-                } => {
-                    let imm16 = ((instruction_byte.clone() as u16) << 8) | (imm8 as u16);
-                    out.write_all(
-                        format!(
-                            "mov word {}, {imm16}\n",
-                            effective_addr_calc.to_string_with_disp16(disp16 as i16)
-                        )
-                        .as_bytes(),
-                    )?;
-                    DecoderState::Init
-                }
-                DecoderState::MovAccMemToAccMemInit {
-                    acc_to_mem,
-                    is_word,
-                } => {
-                    let addr_lo = instruction_byte.clone();
-                    DecoderState::MovAccMemToAccMemInitAddrLoRead {
-                        acc_to_mem,
-                        is_word,
-                        addr_lo,
-                    }
-                }
-                DecoderState::MovAccMemToAccMemInitAddrLoRead {
-                    acc_to_mem,
-                    is_word,
-                    addr_lo,
-                } => {
-                    let addr = ((instruction_byte.clone() as u16) << 8) | (addr_lo as u16);
-                    if acc_to_mem {
-                        if is_word {
-                            out.write_all(format!("mov [{addr}], ax\n").as_bytes())?;
-                        } else {
-                            out.write_all(format!("mov [{addr}], al\n").as_bytes())?;
-                        }
-                    } else {
-                        if is_word {
-                            out.write_all(format!("mov ax, [{addr}]\n").as_bytes())?;
-                        } else {
-                            out.write_all(format!("mov al, [{addr}]\n").as_bytes())?;
+                    MovImmToRegMemState::ToDirectAddrReadLowDisp => {
+                        let low_disp = instruction_byte.clone();
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToDirectAddrReadHighDisp { low_disp },
                         }
                     }
-                    DecoderState::Init
-                }
-                DecoderState::MovRegMemSRToRegMemSR { to_sr } => {
-                    let sr = SegmentRegister::from_sr((instruction_byte & SR_MASK) >> SR_OFFSET);
-                    match instruction_byte & MOD_MASK {
+                    MovImmToRegMemState::ToDirectAddrReadHighDisp { low_disp } => {
+                        let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToDirectAddrReadLowImm { disp },
+                        }
+                    }
+                    MovImmToRegMemState::ToDirectAddrReadLowImm { disp } => {
+                        let low_imm = instruction_byte.clone();
+                        if is_word {
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToDirectAddrReadHighImm {
+                                    disp,
+                                    low_imm,
+                                },
+                            }
+                        } else {
+                            let imm8 = low_imm as i8;
+                            out.write_all(format!("mov [{disp}], {imm8}\n").as_bytes())?;
+                            DecoderState::Init
+                        }
+                    }
+                    MovImmToRegMemState::ToDirectAddrReadHighImm { disp, low_imm } => {
+                        let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
+                        out.write_all(format!("mov [{disp}], {imm16}\n").as_bytes())?;
+                        DecoderState::Init
+                    }
+                    MovImmToRegMemState::ToEffectAddrReadLowDisp {
+                        effect_addr,
+                        is_disp16,
+                    } => {
+                        let low_disp = instruction_byte.clone();
+                        if is_disp16 {
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToEffectAddrReadHighDisp {
+                                    effect_addr,
+                                    low_disp,
+                                },
+                            }
+                        } else {
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                                    effect_addr,
+                                    disp: Some(low_disp as i16),
+                                },
+                            }
+                        }
+                    }
+                    MovImmToRegMemState::ToEffectAddrReadHighDisp {
+                        effect_addr,
+                        low_disp,
+                    } => {
+                        let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                                effect_addr,
+                                disp: Some(disp as i16),
+                            },
+                        }
+                    }
+                    MovImmToRegMemState::ToEffectAddrReadLowImm { effect_addr, disp } => {
+                        let low_imm = instruction_byte.clone();
+                        if is_word {
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToEffectAddrReadHighImm {
+                                    effect_addr,
+                                    disp,
+                                    low_imm,
+                                },
+                            }
+                        } else {
+                            if let Some(disp) = disp {
+                                out.write_all(
+                                    format!(
+                                        "mov {}, {low_imm}\n",
+                                        effect_addr.to_string_with_disp16(disp)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            } else {
+                                out.write_all(
+                                    format!(
+                                        "mov {}, {low_imm}\n",
+                                        effect_addr.to_string_without_disp()
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            }
+                            DecoderState::Init
+                        }
+                    }
+                    MovImmToRegMemState::ToEffectAddrReadHighImm {
+                        effect_addr,
+                        disp,
+                        low_imm,
+                    } => {
+                        let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
+                        if let Some(disp) = disp {
+                            out.write_all(
+                                format!(
+                                    "mov {}, {imm16}\n",
+                                    effect_addr.to_string_with_disp16(disp)
+                                )
+                                .as_bytes(),
+                            )?;
+                        } else {
+                            out.write_all(
+                                format!("mov {}, {imm16}\n", effect_addr.to_string_without_disp())
+                                    .as_bytes(),
+                            )?;
+                        }
+                        DecoderState::Init
+                    }
+                },
+                DecoderState::MovAccMemToAccMem {
+                    acc_to_mem,
+                    is_word,
+                    state,
+                } => match state {
+                    MovAccMemToAccMemState::ReadAddrLo => {
+                        let addr_lo = instruction_byte.clone();
+                        DecoderState::MovAccMemToAccMem {
+                            acc_to_mem,
+                            is_word,
+                            state: MovAccMemToAccMemState::ReadAddrHigh { addr_lo },
+                        }
+                    }
+                    MovAccMemToAccMemState::ReadAddrHigh { addr_lo } => {
+                        let addr = ((instruction_byte.clone() as u16) << 8) | (addr_lo as u16);
+                        if acc_to_mem {
+                            if is_word {
+                                out.write_all(format!("mov [{addr}], ax\n").as_bytes())?;
+                            } else {
+                                out.write_all(format!("mov [{addr}], al\n").as_bytes())?;
+                            }
+                        } else {
+                            if is_word {
+                                out.write_all(format!("mov ax, [{addr}]\n").as_bytes())?;
+                            } else {
+                                out.write_all(format!("mov al, [{addr}]\n").as_bytes())?;
+                            }
+                        }
+                        DecoderState::Init
+                    }
+                },
+                DecoderState::MovRegMemSRToRegMemSR { to_sr, state } => match state {
+                    MovRegMemSRToRegMemSRState::Init => {
+                        let sr =
+                            SegmentRegister::from_sr((instruction_byte & SR_MASK) >> SR_OFFSET);
+                        match instruction_byte & MOD_MASK {
+                            MOD_REG => {
+                                let rm = Register::from_reg_w(
+                                    (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
+                                    true,
+                                )?;
+                                if to_sr {
+                                    out.write_all(format!("mov {sr}, {rm}\n").as_bytes())?;
+                                } else {
+                                    out.write_all(format!("mov {rm}, {sr}\n").as_bytes())?;
+                                }
+                                DecoderState::Init
+                            }
+                            MOD_MEM_0 => {
+                                if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET)
+                                    == RM_VALUE_DIRECT_ACCESS
+                                {
+                                    DecoderState::MovRegMemSRToRegMemSR {
+                                    to_sr,
+                                    state:
+                                        MovRegMemSRToRegMemSRState::ToFromDirectAddrReadLowDisp {
+                                            sr,
+                                        },
+                                }
+                                } else {
+                                    let effective_addr_calc = EffectiveAddressCalculation::from_rm(
+                                        (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
+                                    )?;
+                                    if to_sr {
+                                        out.write_all(
+                                            format!(
+                                                "mov {sr}, {}\n",
+                                                effective_addr_calc.to_string_without_disp()
+                                            )
+                                            .as_bytes(),
+                                        )?;
+                                    } else {
+                                        out.write_all(
+                                            format!(
+                                                "mov {}, {sr}\n",
+                                                effective_addr_calc.to_string_without_disp()
+                                            )
+                                            .as_bytes(),
+                                        )?;
+                                    }
+                                    DecoderState::Init
+                                }
+                            }
+                            mode => {
+                                let effect_addr = EffectiveAddressCalculation::from_rm(
+                                    (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
+                                )?;
+                                DecoderState::MovRegMemSRToRegMemSR {
+                                    to_sr,
+                                    state:
+                                        MovRegMemSRToRegMemSRState::ToFromEffectAddrReadLowDisp {
+                                            sr,
+                                            effect_addr,
+                                            is_disp16: mode == MOD_MEM_2,
+                                        },
+                                }
+                            }
+                        }
+                    }
+                    MovRegMemSRToRegMemSRState::ToFromDirectAddrReadLowDisp { sr } => {
+                        let low_disp = instruction_byte.clone();
+                        DecoderState::MovRegMemSRToRegMemSR {
+                            to_sr,
+                            state: MovRegMemSRToRegMemSRState::ToFromDirectAddrReadHighDisp {
+                                sr,
+                                low_disp,
+                            },
+                        }
+                    }
+                    MovRegMemSRToRegMemSRState::ToFromDirectAddrReadHighDisp { sr, low_disp } => {
+                        let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
+                        if to_sr {
+                            out.write_all(format!("mov {sr}, [{disp}]\n").as_bytes())?;
+                        } else {
+                            out.write_all(format!("mov [{disp}], {sr}\n").as_bytes())?;
+                        }
+                        DecoderState::Init
+                    }
+                    MovRegMemSRToRegMemSRState::ToFromEffectAddrReadLowDisp {
+                        sr,
+                        effect_addr,
+                        is_disp16,
+                    } => {
+                        let low_disp = instruction_byte.clone();
+                        if is_disp16 {
+                            DecoderState::MovRegMemSRToRegMemSR {
+                                to_sr,
+                                state: MovRegMemSRToRegMemSRState::ToFromEffectAddrReadHighDisp {
+                                    sr,
+                                    low_disp,
+                                    effect_addr,
+                                },
+                            }
+                        } else {
+                            if to_sr {
+                                out.write_all(
+                                    format!(
+                                        "mov {sr}, {}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            } else {
+                                out.write_all(
+                                    format!(
+                                        "mov {}, {sr}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            }
+                            DecoderState::Init
+                        }
+                    }
+                    MovRegMemSRToRegMemSRState::ToFromEffectAddrReadHighDisp {
+                        sr,
+                        effect_addr,
+                        low_disp,
+                    } => {
+                        let disp =
+                            (((instruction_byte.clone() as u16) << 8) | (low_disp as u16)) as i16;
+                        if to_sr {
+                            out.write_all(
+                                format!("mov {sr}, {}\n", effect_addr.to_string_with_disp16(disp))
+                                    .as_bytes(),
+                            )?;
+                        } else {
+                            out.write_all(
+                                format!("mov {}, {sr}\n", effect_addr.to_string_with_disp16(disp))
+                                    .as_bytes(),
+                            )?;
+                        }
+                        DecoderState::Init
+                    }
+                },
+                DecoderState::ArithRegMemWithRegToEither {
+                    op,
+                    reg_is_dest,
+                    is_word,
+                    state,
+                } => match state {
+                    ArithRegMemWithRegToEitherState::Init => match instruction_byte & MOD_MASK {
                         MOD_REG => {
+                            let reg = Register::from_reg_w(
+                                (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                is_word,
+                            )?;
                             let rm = Register::from_reg_w(
                                 (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
-                                true,
+                                is_word,
                             )?;
-                            if to_sr {
-                                out.write_all(format!("mov {sr}, {rm}\n").as_bytes())?;
+                            if reg_is_dest {
+                                out.write_all(format!("{op} {reg}, {rm}\n").as_bytes())?;
                             } else {
-                                out.write_all(format!("mov {rm}, {sr}\n").as_bytes())?;
+                                out.write_all(format!("{op} {rm}, {reg}\n").as_bytes())?;
                             }
                             DecoderState::Init
                         }
@@ -838,127 +1062,150 @@ impl Decoder {
                             if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET)
                                 == RM_VALUE_DIRECT_ACCESS
                             {
-                                DecoderState::MovDirAddrSRToDirAddrSR { to_sr, sr }
+                                let reg = Register::from_reg_w(
+                                    (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                    is_word,
+                                )?;
+                                DecoderState::ArithRegMemWithRegToEither {
+                                    op,
+                                    reg_is_dest,
+                                    is_word,
+                                    state:
+                                        ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp {
+                                            reg,
+                                        },
+                                }
                             } else {
-                                let effective_addr_calc = EffectiveAddressCalculation::from_rm(
+                                let reg = Register::from_reg_w(
+                                    (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                    is_word,
+                                )?;
+                                let rm = EffectiveAddressCalculation::from_rm(
                                     (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                                 )?;
-                                if to_sr {
+                                if reg_is_dest {
                                     out.write_all(
-                                        format!(
-                                            "mov {sr}, {}\n",
-                                            effective_addr_calc.to_string_without_disp()
-                                        )
-                                        .as_bytes(),
+                                        format!("{op} {reg}, {}\n", rm.to_string_without_disp())
+                                            .as_bytes(),
                                     )?;
                                 } else {
                                     out.write_all(
-                                        format!(
-                                            "mov {}, {sr}\n",
-                                            effective_addr_calc.to_string_without_disp()
-                                        )
-                                        .as_bytes(),
+                                        format!("{op} {}, {reg}\n", rm.to_string_without_disp())
+                                            .as_bytes(),
                                     )?;
                                 }
                                 DecoderState::Init
                             }
                         }
                         mode => {
-                            let effective_addr_calc = EffectiveAddressCalculation::from_rm(
+                            let reg = Register::from_reg_w(
+                                (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
+                                is_word,
+                            )?;
+                            let effect_addr = EffectiveAddressCalculation::from_rm(
                                 (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                             )?;
-                            DecoderState::MovEffectAddrSRToEffectAddrSRWithDisp {
-                                effective_addr_calc,
-                                to_sr,
-                                sr,
-                                is_disp16: mode == MOD_MEM_2,
+                            DecoderState::ArithRegMemWithRegToEither {
+                                op,
+                                reg_is_dest,
+                                is_word,
+                                state: ArithRegMemWithRegToEitherState::EffectAddrReadLowDisp {
+                                    reg,
+                                    effect_addr,
+                                    is_disp16: mode == MOD_MEM_2,
+                                },
                             }
                         }
-                    }
-                }
-                DecoderState::MovDirAddrSRToDirAddrSR { to_sr, sr } => {
-                    let disp8 = instruction_byte.clone();
-                    DecoderState::MovDirAddrSRToDirAddrSRLowDispRead {
-                        to_sr,
-                        sr,
-                        low_disp: disp8,
-                    }
-                }
-                DecoderState::MovEffectAddrSRToEffectAddrSRWithDisp {
-                    effective_addr_calc,
-                    to_sr,
-                    sr,
-                    is_disp16,
-                } => {
-                    let disp8 = instruction_byte.clone();
-                    if is_disp16 {
-                        DecoderState::MovEffectAddrSRToEffectAddrSRLowDispRead {
-                            effective_addr_calc,
-                            to_sr,
-                            sr,
-                            low_disp: disp8,
+                    },
+                    ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp { reg } => {
+                        DecoderState::ArithRegMemWithRegToEither {
+                            op,
+                            reg_is_dest,
+                            is_word,
+                            state: ArithRegMemWithRegToEitherState::DirectAddressReadHighDisp {
+                                reg: reg.clone(),
+                                low_disp: instruction_byte.clone(),
+                            },
                         }
-                    } else {
-                        if to_sr {
+                    }
+                    ArithRegMemWithRegToEitherState::DirectAddressReadHighDisp {
+                        reg,
+                        low_disp,
+                    } => {
+                        let disp =
+                            ((instruction_byte.clone() as u16) << 8) | (low_disp.to_owned() as u16);
+                        if reg_is_dest {
+                            out.write_all(format!("{op} {reg}, [{disp}]\n").as_bytes())?;
+                        } else {
+                            out.write_all(format!("{op} [{disp}], {reg}\n").as_bytes())?;
+                        }
+                        DecoderState::Init
+                    }
+                    ArithRegMemWithRegToEitherState::EffectAddrReadLowDisp {
+                        reg,
+                        effect_addr,
+                        is_disp16,
+                    } => {
+                        let low_disp: u8 = instruction_byte.clone();
+                        if is_disp16.to_owned() {
+                            DecoderState::ArithRegMemWithRegToEither {
+                                op,
+                                reg_is_dest,
+                                is_word,
+                                state: ArithRegMemWithRegToEitherState::EffectAddrReadHighDisp {
+                                    reg: reg.clone(),
+                                    effect_addr: effect_addr.clone(),
+                                    low_disp,
+                                },
+                            }
+                        } else {
+                            if reg_is_dest {
+                                out.write_all(
+                                    format!(
+                                        "{op} {reg}, {}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            } else {
+                                out.write_all(
+                                    format!(
+                                        "{op} {}, {reg}\n",
+                                        effect_addr.to_string_with_disp8(low_disp as i8)
+                                    )
+                                    .as_bytes(),
+                                )?;
+                            }
+                            DecoderState::Init
+                        }
+                    }
+                    ArithRegMemWithRegToEitherState::EffectAddrReadHighDisp {
+                        reg,
+                        effect_addr,
+                        low_disp,
+                    } => {
+                        let disp =
+                            ((instruction_byte.clone() as u16) << 8) | (low_disp.clone() as u16);
+                        if reg_is_dest {
                             out.write_all(
                                 format!(
-                                    "mov {sr}, {}\n",
-                                    effective_addr_calc.to_string_with_disp8(disp8 as i8)
+                                    "{op} {reg}, {}\n",
+                                    effect_addr.to_string_with_disp16(disp as i16)
                                 )
                                 .as_bytes(),
                             )?;
                         } else {
                             out.write_all(
                                 format!(
-                                    "mov {}, {sr}\n",
-                                    effective_addr_calc.to_string_with_disp8(disp8 as i8)
+                                    "{op} {}, {reg}\n",
+                                    effect_addr.to_string_with_disp16(disp as i16)
                                 )
                                 .as_bytes(),
                             )?;
                         }
                         DecoderState::Init
                     }
-                }
-                DecoderState::MovDirAddrSRToDirAddrSRLowDispRead {
-                    to_sr,
-                    sr,
-                    low_disp,
-                } => {
-                    let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                    if to_sr {
-                        out.write_all(format!("mov {sr}, [{disp}]\n").as_bytes())?;
-                    } else {
-                        out.write_all(format!("mov [{disp}], {sr}\n").as_bytes())?;
-                    }
-                    DecoderState::Init
-                }
-                DecoderState::MovEffectAddrSRToEffectAddrSRLowDispRead {
-                    effective_addr_calc,
-                    to_sr,
-                    sr,
-                    low_disp,
-                } => {
-                    let disp =
-                        (((instruction_byte.clone() as u16) << 8) | (low_disp as u16)) as i16;
-                    if to_sr {
-                        out.write_all(
-                            format!(
-                                "mov {sr}, {}\n",
-                                effective_addr_calc.to_string_with_disp16(disp)
-                            )
-                            .as_bytes(),
-                        )?;
-                    } else {
-                        out.write_all(
-                            format!(
-                                "mov {}, {sr}\n",
-                                effective_addr_calc.to_string_with_disp16(disp)
-                            )
-                            .as_bytes(),
-                        )?;
-                    }
-                    DecoderState::Init
-                }
+                },
             }
         }
         Ok(())
