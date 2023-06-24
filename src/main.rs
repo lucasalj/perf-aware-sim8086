@@ -42,6 +42,9 @@ enum DecoderState {
         is_word: bool,
         state: ArithImmToAccState,
     },
+    CondJump {
+        jmp: ConditionalJump,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -132,6 +135,30 @@ enum MovRegMemSRToRegMemSRState {
         effect_addr: EffectiveAddressCalculation,
         low_disp: u8,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConditionalJump {
+    JumpOnEqual,
+    JumpOnLess,
+    JumpOnLessOrEqual,
+    JumpOnBelow,
+    JumpOnBelowOrEqual,
+    JumpOnParity,
+    JumpOnOverflow,
+    JumpOnSign,
+    JumpOnNotEqual,
+    JumpOnNotLess,
+    JumpOnNotLessOrEqual,
+    JumpOnNotBelow,
+    JumpOnNotBelowOrEqual,
+    JumpOnNotPar,
+    JumpOnNotOverflow,
+    JumpOnNotSign,
+    LoopCxTimes,
+    LoopWhileZero,
+    LoopWhileNotZero,
+    JumpOnCxZero,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -269,6 +296,33 @@ impl Display for ArithOperation {
             ArithOperation::ADD => f.write_str("add"),
             ArithOperation::SUB => f.write_str("sub"),
             ArithOperation::CMP => f.write_str("cmp"),
+        }
+    }
+}
+
+impl Display for ConditionalJump {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConditionalJump::JumpOnEqual => f.write_str("je"),
+            ConditionalJump::JumpOnLess => f.write_str("jl"),
+            ConditionalJump::JumpOnLessOrEqual => f.write_str("jle"),
+            ConditionalJump::JumpOnBelow => f.write_str("jb"),
+            ConditionalJump::JumpOnBelowOrEqual => f.write_str("jbe"),
+            ConditionalJump::JumpOnParity => f.write_str("jp"),
+            ConditionalJump::JumpOnOverflow => f.write_str("jo"),
+            ConditionalJump::JumpOnSign => f.write_str("js"),
+            ConditionalJump::JumpOnNotEqual => f.write_str("jne"),
+            ConditionalJump::JumpOnNotLess => f.write_str("jnl"),
+            ConditionalJump::JumpOnNotLessOrEqual => f.write_str("jnle"),
+            ConditionalJump::JumpOnNotBelow => f.write_str("jnb"),
+            ConditionalJump::JumpOnNotBelowOrEqual => f.write_str("jnbe"),
+            ConditionalJump::JumpOnNotPar => f.write_str("jnp"),
+            ConditionalJump::JumpOnNotOverflow => f.write_str("jno"),
+            ConditionalJump::JumpOnNotSign => f.write_str("jns"),
+            ConditionalJump::LoopCxTimes => f.write_str("loop"),
+            ConditionalJump::LoopWhileZero => f.write_str("loopz"),
+            ConditionalJump::LoopWhileNotZero => f.write_str("loopnz"),
+            ConditionalJump::JumpOnCxZero => f.write_str("jcxz"),
         }
     }
 }
@@ -469,6 +523,27 @@ const ARITH_IMMEDIATE_WITH_REGMEM_OPCODE: u8 = 0x80;
 const ARITH_IMMEDIATE_TO_ACC_OPCODE_MASK: u8 = 0xC6;
 const ARITH_IMMEDIATE_TO_ACC_OPCODE: u8 = 0x04;
 
+const JUMP_ON_EQUAL_OPCODE: u8 = 0x74;
+const JUMP_ON_LESS_OPCODE: u8 = 0x7C;
+const JUMP_ON_LESS_OR_EQUAL_OPCODE: u8 = 0x7E;
+const JUMP_ON_BELOW_OPCODE: u8 = 0x72;
+const JUMP_ON_BELOW_OR_EQUAL_OPCODE: u8 = 0x76;
+const JUMP_ON_PARITY_OPCODE: u8 = 0x7A;
+const JUMP_ON_OVERFLOW_OPCODE: u8 = 0x70;
+const JUMP_ON_SIGN_OPCODE: u8 = 0x78;
+const JUMP_ON_NOT_EQUAL_OPCODE: u8 = 0x75;
+const JUMP_ON_NOT_LESS_OPCODE: u8 = 0x7D;
+const JUMP_ON_NOT_LESS_OR_EQUAL_OPCODE: u8 = 0x7F;
+const JUMP_ON_NOT_BELOW_OPCODE: u8 = 0x73;
+const JUMP_ON_NOT_BELOW_OR_EQUAL_OPCODE: u8 = 0x77;
+const JUMP_ON_NOT_PAR_OPCODE: u8 = 0x7B;
+const JUMP_ON_NOT_OVERFLOW_OPCODE: u8 = 0x71;
+const JUMP_ON_NOT_SIGN_OPCODE: u8 = 0x79;
+const LOOP_CX_TIMES_OPCODE: u8 = 0xE2;
+const LOOP_WHILE_ZERO_OPCODE: u8 = 0xE1;
+const LOOP_WHILE_NOT_ZERO_OPCODE: u8 = 0xE0;
+const JUMP_ON_CX_ZERO_OPCODE: u8 = 0xE3;
+
 const D_MASK: u8 = 0x02;
 const D_REG_DST: u8 = 0x02;
 
@@ -606,7 +681,69 @@ impl Decoder {
                     state: ArithImmToAccState::Init,
                 }
             } else {
-                return Err(DecoderError::GenericError(String::from("unknown opcode")));
+                match instruction_byte {
+                    JUMP_ON_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnEqual,
+                    },
+                    JUMP_ON_LESS_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnLess,
+                    },
+                    JUMP_ON_LESS_OR_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnLessOrEqual,
+                    },
+                    JUMP_ON_BELOW_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnBelow,
+                    },
+                    JUMP_ON_BELOW_OR_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnBelowOrEqual,
+                    },
+                    JUMP_ON_PARITY_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnParity,
+                    },
+                    JUMP_ON_OVERFLOW_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnOverflow,
+                    },
+                    JUMP_ON_SIGN_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnSign,
+                    },
+                    JUMP_ON_NOT_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotEqual,
+                    },
+                    JUMP_ON_NOT_LESS_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotLess,
+                    },
+                    JUMP_ON_NOT_LESS_OR_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotLessOrEqual,
+                    },
+                    JUMP_ON_NOT_BELOW_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotBelow,
+                    },
+                    JUMP_ON_NOT_BELOW_OR_EQUAL_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotBelowOrEqual,
+                    },
+                    JUMP_ON_NOT_PAR_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotPar,
+                    },
+                    JUMP_ON_NOT_OVERFLOW_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotOverflow,
+                    },
+                    JUMP_ON_NOT_SIGN_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnNotSign,
+                    },
+                    LOOP_CX_TIMES_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::LoopCxTimes,
+                    },
+                    LOOP_WHILE_ZERO_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::LoopWhileZero,
+                    },
+                    LOOP_WHILE_NOT_ZERO_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::LoopWhileNotZero,
+                    },
+                    JUMP_ON_CX_ZERO_OPCODE => DecoderState::CondJump {
+                        jmp: ConditionalJump::JumpOnCxZero,
+                    },
+                    _ => return Err(DecoderError::GenericError(String::from("unknown opcode"))),
+                }
             },
         )
     }
@@ -1599,6 +1736,18 @@ impl Decoder {
         })
     }
 
+    fn decode_conditional_jump<W: Write>(
+        &mut self,
+        instruction_byte: u8,
+        jmp: ConditionalJump,
+        out: &mut BufWriter<W>,
+    ) -> DecoderResult<DecoderState> {
+        let ip_inc8 = instruction_byte as i8 + 2;
+        let plus = if ip_inc8 >= 0 { "+" } else { "" };
+        out.write_all(format!("{jmp} ${plus}{ip_inc8}\n").as_bytes())?;
+        Ok(DecoderState::Init)
+    }
+
     fn decode<W: Write>(&mut self, input: &[u8], out: &mut BufWriter<W>) -> DecoderResult<()> {
         for instruction_byte in input.into_iter() {
             self.state = match self.state {
@@ -1661,6 +1810,9 @@ impl Decoder {
                 )?,
                 DecoderState::ArithImmToAcc { op, is_word, state } => {
                     self.decode_arith_imm_to_acc(instruction_byte.clone(), op, is_word, state, out)?
+                }
+                DecoderState::CondJump { jmp } => {
+                    self.decode_conditional_jump(instruction_byte.clone(), jmp, out)?
                 }
             }
         }
