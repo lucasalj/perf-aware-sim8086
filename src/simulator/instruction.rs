@@ -229,6 +229,18 @@ impl Instruction {
             size_specifier,
         }
     }
+    pub fn operation(&self) -> InstructionOperation {
+        return self.op.clone();
+    }
+    pub fn src(&self) -> SrcOperand {
+        return self.src.clone();
+    }
+    pub fn dst(&self) -> Option<DstOperand> {
+        return self.dst.clone();
+    }
+    pub fn size_specifier(&self) -> Option<SizeSpecifier> {
+        return self.size_specifier.clone();
+    }
 }
 
 impl MemoryAddressing {

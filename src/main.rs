@@ -14,7 +14,7 @@ fn main() -> DecoderResult<()> {
         )));
     }
 
-    let runtime = Runtime::new();
+    let mut runtime = Runtime::new();
 
     let filename = &args[1];
     let mut buffer = [0u8; 1024];
@@ -23,6 +23,8 @@ fn main() -> DecoderResult<()> {
     out.write_all(format!("; {filename}\nbits 16\n\n").as_bytes())?;
     let mut decoder = Decoder::new();
     let mut instructions = vec![];
+    runtime.print_registers(&mut out).unwrap();
+    write!(out, "\n")?;
     loop {
         let n_bytes = file.read(&mut buffer)?;
         if n_bytes == 0 {
@@ -32,7 +34,10 @@ fn main() -> DecoderResult<()> {
         decoder.decode(data, &mut instructions)?;
         for instruction in instructions.iter() {
             write!(out, "{instruction}\n")?;
+            runtime.execute(instruction);
         }
     }
+    write!(out, "\n")?;
+    runtime.print_registers(&mut out).unwrap();
     Ok(())
 }
