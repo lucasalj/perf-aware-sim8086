@@ -1,6 +1,5 @@
 mod simulator;
 use simulator::decoder::*;
-use simulator::instruction::*;
 use simulator::runtime::*;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -23,8 +22,6 @@ fn main() -> DecoderResult<()> {
     out.write_all(format!("; {filename}\nbits 16\n\n").as_bytes())?;
     let mut decoder = Decoder::new();
     let mut instructions = vec![];
-    runtime.print_registers(&mut out).unwrap();
-    write!(out, "\n")?;
     loop {
         let n_bytes = file.read(&mut buffer)?;
         if n_bytes == 0 {
@@ -35,9 +32,11 @@ fn main() -> DecoderResult<()> {
         for instruction in instructions.iter() {
             write!(out, "{instruction}\n")?;
             runtime.execute(instruction);
+            write!(out, "\n")?;
+            runtime.print_registers(&mut out).unwrap();
         }
     }
-    write!(out, "\n")?;
-    runtime.print_registers(&mut out).unwrap();
+    // write!(out, "\n")?;
+    // runtime.print_registers(&mut out).unwrap();
     Ok(())
 }
