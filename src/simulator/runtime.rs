@@ -5,8 +5,10 @@ use super::instruction::*;
 #[derive(Debug)]
 pub struct Runtime {
     gen_reg: [u16; 8],
+    instruction_memory: Vec<u8>,
     zero_flag: bool,
     signal_flag: bool,
+    instruction_pointer: usize,
 }
 
 #[derive(Debug)]
@@ -20,9 +22,23 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             gen_reg: [0u16; 8],
+            instruction_memory: Vec::new(),
             zero_flag: false,
             signal_flag: false,
+            instruction_pointer: 0,
         }
+    }
+
+    pub fn instruction_memory(&mut self) -> &mut Vec<u8> {
+        &mut self.instruction_memory
+    }
+
+    pub fn set_ip(&mut self, new_val: usize) {
+        self.instruction_pointer = new_val
+    }
+
+    pub fn ip(&self) -> usize {
+        self.instruction_pointer
     }
 
     pub fn reg_part(reg: Register) -> RegisterPart {
@@ -237,6 +253,43 @@ impl Runtime {
             SrcOperand::RelativePosition(_) => todo!(),
         }
     }
+    pub fn execute_je(
+        &mut self,
+        src: SrcOperand,
+        _dst: Option<DstOperand>,
+        _size_specifier: Option<SizeSpecifier>,
+    ) {
+        if self.zero_flag {
+            match src {
+                SrcOperand::Register(_) => unreachable!(),
+                SrcOperand::MemoryAddressing(_) => unreachable!(),
+                SrcOperand::Immediate(_) => unreachable!(),
+                SrcOperand::RelativePosition(p) => {
+                    self.instruction_pointer =
+                        (self.instruction_pointer as isize + (p as isize)) as usize;
+                }
+            }
+        }
+    }
+
+    pub fn execute_jne(
+        &mut self,
+        src: SrcOperand,
+        _dst: Option<DstOperand>,
+        _size_specifier: Option<SizeSpecifier>,
+    ) {
+        if !self.zero_flag {
+            match src {
+                SrcOperand::Register(_) => unreachable!(),
+                SrcOperand::MemoryAddressing(_) => unreachable!(),
+                SrcOperand::Immediate(_) => unreachable!(),
+                SrcOperand::RelativePosition(p) => {
+                    self.instruction_pointer =
+                        (self.instruction_pointer as isize + (p as isize)) as usize;
+                }
+            }
+        }
+    }
 
     pub fn execute(&mut self, instruction: &Instruction) {
         match instruction.operation() {
@@ -261,7 +314,11 @@ impl Runtime {
                 instruction.size_specifier(),
             ),
 
-            InstructionOperation::JE => todo!(),
+            InstructionOperation::JE => self.execute_je(
+                instruction.src(),
+                instruction.dst(),
+                instruction.size_specifier(),
+            ),
             InstructionOperation::JL => todo!(),
             InstructionOperation::JLE => todo!(),
             InstructionOperation::JB => todo!(),
@@ -269,7 +326,11 @@ impl Runtime {
             InstructionOperation::JP => todo!(),
             InstructionOperation::JO => todo!(),
             InstructionOperation::JS => todo!(),
-            InstructionOperation::JNE => todo!(),
+            InstructionOperation::JNE => self.execute_jne(
+                instruction.src(),
+                instruction.dst(),
+                instruction.size_specifier(),
+            ),
             InstructionOperation::JNL => todo!(),
             InstructionOperation::JNLE => todo!(),
             InstructionOperation::JNB => todo!(),
@@ -284,16 +345,15 @@ impl Runtime {
         }
     }
 
-    pub fn print_registers<W: Write>(&self, out: &mut BufWriter<W>) -> Result<(), std::io::Error> {
-        write!(out, "  Registers\n")?;
-        write!(out, "-------------\n")?;
+    pub fn print_registers(&self) {
+        print!("-------------\n");
         for reg_idx in 0..self.gen_reg.len() {
             let reg = Runtime::index_to_reg(reg_idx);
-            write!(out, "{reg}: 0x{:04x}\n", self.gen_reg[reg_idx])?;
+            print!("{reg}: 0x{:04x}\n", self.gen_reg[reg_idx]);
         }
-        write!(out, "ZF: {}\n", self.zero_flag as u32)?;
-        write!(out, "SF: {}\n", self.signal_flag as u32)?;
-        write!(out, "-------------\n")?;
-        Ok(())
+        print!("ZF: {}\n", self.zero_flag as u32);
+        print!("SF: {}\n", self.signal_flag as u32);
+        print!("IP: {}\n", self.instruction_pointer as u32);
+        print!("-------------\n\n");
     }
 }

@@ -564,8 +564,11 @@ impl Decoder {
         }
     }
 
-    fn decode_init(&mut self, instruction_byte: u8) -> DecoderResult<DecoderState> {
-        Ok(
+    fn decode_init(
+        &mut self,
+        instruction_byte: u8,
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
+        Ok((
             if instruction_byte & MOV_REGMEM_TO_REGMEM_OPCODE_MASK == MOV_REGMEM_TO_REGMEM_OPCODE {
                 let d = instruction_byte & D_MASK;
                 let w = instruction_byte & W_MASK;
@@ -724,7 +727,8 @@ impl Decoder {
                     _ => return Err(DecoderError::GenericError(String::from("unknown opcode"))),
                 }
             },
-        )
+            None,
+        ))
     }
 
     fn decode_move_mem_to_from_reg(
@@ -733,8 +737,7 @@ impl Decoder {
         reg_is_dest: bool,
         is_word: bool,
         state: MovRegMemToFromRegState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             MovRegMemToFromRegState::Init => match instruction_byte & MOD_MASK {
                 MOD_REG => {
@@ -746,22 +749,23 @@ impl Decoder {
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         is_word,
                     )?;
+                    let inst;
                     if reg_is_dest {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Register(rm),
                             Some(DstOperand::Register(reg)),
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Register(reg),
                             Some(DstOperand::Register(rm)),
                             None,
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
                 MOD_MEM_0 => {
                     if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET) == RM_VALUE_DIRECT_ACCESS {
@@ -769,11 +773,14 @@ impl Decoder {
                             (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
                             is_word,
                         )?;
-                        DecoderState::MovRegMemToFromReg {
-                            reg_is_dest,
-                            is_word,
-                            state: MovRegMemToFromRegState::DirectAddressReadLowDisp { reg },
-                        }
+                        (
+                            DecoderState::MovRegMemToFromReg {
+                                reg_is_dest,
+                                is_word,
+                                state: MovRegMemToFromRegState::DirectAddressReadLowDisp { reg },
+                            },
+                            None,
+                        )
                     } else {
                         let reg = Register::from_reg_w(
                             (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
@@ -782,8 +789,9 @@ impl Decoder {
                         let rm = EffectiveAddressCalculation::from_rm(
                             (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         )?;
+                        let inst;
                         if reg_is_dest {
-                            out.push(Instruction::new(
+                            inst = Some(Instruction::new(
                                 InstructionOperation::MOV,
                                 SrcOperand::MemoryAddressing(MemoryAddressing::new(
                                     rm.first_reg(),
@@ -794,7 +802,7 @@ impl Decoder {
                                 None,
                             ));
                         } else {
-                            out.push(Instruction::new(
+                            inst = Some(Instruction::new(
                                 InstructionOperation::MOV,
                                 SrcOperand::Register(reg),
                                 Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -805,7 +813,7 @@ impl Decoder {
                                 None,
                             ));
                         }
-                        DecoderState::Init
+                        (DecoderState::Init, inst)
                     }
                 }
                 mode => {
@@ -816,18 +824,21 @@ impl Decoder {
                     let effect_addr = EffectiveAddressCalculation::from_rm(
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                     )?;
-                    DecoderState::MovRegMemToFromReg {
-                        reg_is_dest,
-                        is_word,
-                        state: MovRegMemToFromRegState::EffectAddrReadLowDisp {
-                            reg,
-                            effect_addr,
-                            is_disp16: mode == MOD_MEM_2,
+                    (
+                        DecoderState::MovRegMemToFromReg {
+                            reg_is_dest,
+                            is_word,
+                            state: MovRegMemToFromRegState::EffectAddrReadLowDisp {
+                                reg,
+                                effect_addr,
+                                is_disp16: mode == MOD_MEM_2,
+                            },
                         },
-                    }
+                        None,
+                    )
                 }
             },
-            MovRegMemToFromRegState::DirectAddressReadLowDisp { reg } => {
+            MovRegMemToFromRegState::DirectAddressReadLowDisp { reg } => (
                 DecoderState::MovRegMemToFromReg {
                     reg_is_dest,
                     is_word,
@@ -835,19 +846,21 @@ impl Decoder {
                         reg: reg.clone(),
                         low_disp: instruction_byte.clone(),
                     },
-                }
-            }
+                },
+                None,
+            ),
             MovRegMemToFromRegState::DirectAddressReadHighDisp { reg, low_disp } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp.to_owned() as u16);
+                let inst;
                 if reg_is_dest {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::MemoryAddressing(MemoryAddressing::new(None, None, disp)),
                         Some(DstOperand::Register(reg)),
                         None,
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::Register(reg),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -856,7 +869,7 @@ impl Decoder {
                         None,
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
             MovRegMemToFromRegState::EffectAddrReadLowDisp {
                 reg,
@@ -865,18 +878,22 @@ impl Decoder {
             } => {
                 let low_disp: u8 = instruction_byte.clone();
                 if is_disp16.to_owned() {
-                    DecoderState::MovRegMemToFromReg {
-                        reg_is_dest,
-                        is_word,
-                        state: MovRegMemToFromRegState::EffectAddrReadHighDisp {
-                            reg: reg.clone(),
-                            effect_addr: effect_addr.clone(),
-                            low_disp,
+                    (
+                        DecoderState::MovRegMemToFromReg {
+                            reg_is_dest,
+                            is_word,
+                            state: MovRegMemToFromRegState::EffectAddrReadHighDisp {
+                                reg: reg.clone(),
+                                effect_addr: effect_addr.clone(),
+                                low_disp,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
+                    let inst;
                     if reg_is_dest {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::MemoryAddressing(MemoryAddressing::new(
                                 effect_addr.first_reg(),
@@ -887,7 +904,7 @@ impl Decoder {
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Register(reg),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -898,7 +915,7 @@ impl Decoder {
                             None,
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
             }
             MovRegMemToFromRegState::EffectAddrReadHighDisp {
@@ -907,8 +924,9 @@ impl Decoder {
                 low_disp,
             } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp.clone() as u16);
+                let inst;
                 if reg_is_dest {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::MemoryAddressing(MemoryAddressing::new(
                             effect_addr.first_reg(),
@@ -919,7 +937,7 @@ impl Decoder {
                         None,
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::Register(reg),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -930,7 +948,7 @@ impl Decoder {
                         None,
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
         })
     }
@@ -940,8 +958,7 @@ impl Decoder {
         instruction_byte: u8,
         is_word: bool,
         state: MovImmToRegMemState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             MovImmToRegMemState::Init => match instruction_byte & MOD_MASK {
                 MOD_REG => {
@@ -949,124 +966,156 @@ impl Decoder {
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         is_word,
                     )?;
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToRegReadLowImm { reg: rm },
-                    }
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToRegReadLowImm { reg: rm },
+                        },
+                        None,
+                    )
                 }
                 MOD_MEM_0 => {
                     if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET) == RM_VALUE_DIRECT_ACCESS {
-                        DecoderState::MovImmToRegMem {
-                            is_word,
-                            state: MovImmToRegMemState::ToDirectAddrReadLowDisp,
-                        }
+                        (
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToDirectAddrReadLowDisp,
+                            },
+                            None,
+                        )
                     } else {
                         let effect_addr = EffectiveAddressCalculation::from_rm(
                             (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         )?;
-                        DecoderState::MovImmToRegMem {
-                            is_word,
-                            state: MovImmToRegMemState::ToEffectAddrReadLowImm {
-                                effect_addr,
-                                disp: None,
+                        (
+                            DecoderState::MovImmToRegMem {
+                                is_word,
+                                state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                                    effect_addr,
+                                    disp: None,
+                                },
                             },
-                        }
+                            None,
+                        )
                     }
                 }
                 mode => {
                     let effect_addr = EffectiveAddressCalculation::from_rm(
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                     )?;
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToEffectAddrReadLowDisp {
-                            effect_addr,
-                            is_disp16: mode == MOD_MEM_2,
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToEffectAddrReadLowDisp {
+                                effect_addr,
+                                is_disp16: mode == MOD_MEM_2,
+                            },
                         },
-                    }
+                        None,
+                    )
                 }
             },
             MovImmToRegMemState::ToRegReadLowImm { reg } => {
                 let low_imm = instruction_byte.clone();
                 if is_word {
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToRegReadHighImm { reg, low_imm },
-                    }
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToRegReadHighImm { reg, low_imm },
+                        },
+                        None,
+                    )
                 } else {
                     let imm = if low_imm & 0x80 == 0x80 {
                         (0xFF00 | (low_imm as u16)) as i16
                     } else {
                         low_imm as i16
                     };
-                    out.push(Instruction::new(
-                        InstructionOperation::MOV,
-                        SrcOperand::Immediate(imm),
-                        Some(DstOperand::Register(reg)),
-                        None,
-                    ));
-                    DecoderState::Init
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            InstructionOperation::MOV,
+                            SrcOperand::Immediate(imm),
+                            Some(DstOperand::Register(reg)),
+                            None,
+                        )),
+                    )
                 }
             }
             MovImmToRegMemState::ToRegReadHighImm { reg, low_imm } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                out.push(Instruction::new(
-                    InstructionOperation::MOV,
-                    SrcOperand::Immediate(imm16 as i16),
-                    Some(DstOperand::Register(reg)),
-                    None,
-                ));
-                DecoderState::Init
+                (
+                    DecoderState::Init,
+                    Some(Instruction::new(
+                        InstructionOperation::MOV,
+                        SrcOperand::Immediate(imm16 as i16),
+                        Some(DstOperand::Register(reg)),
+                        None,
+                    )),
+                )
             }
             MovImmToRegMemState::ToDirectAddrReadLowDisp => {
                 let low_disp = instruction_byte.clone();
-                DecoderState::MovImmToRegMem {
-                    is_word,
-                    state: MovImmToRegMemState::ToDirectAddrReadHighDisp { low_disp },
-                }
+                (
+                    DecoderState::MovImmToRegMem {
+                        is_word,
+                        state: MovImmToRegMemState::ToDirectAddrReadHighDisp { low_disp },
+                    },
+                    None,
+                )
             }
             MovImmToRegMemState::ToDirectAddrReadHighDisp { low_disp } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                DecoderState::MovImmToRegMem {
-                    is_word,
-                    state: MovImmToRegMemState::ToDirectAddrReadLowImm { disp },
-                }
+                (
+                    DecoderState::MovImmToRegMem {
+                        is_word,
+                        state: MovImmToRegMemState::ToDirectAddrReadLowImm { disp },
+                    },
+                    None,
+                )
             }
             MovImmToRegMemState::ToDirectAddrReadLowImm { disp } => {
                 let low_imm = instruction_byte.clone();
                 if is_word {
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToDirectAddrReadHighImm { disp, low_imm },
-                    }
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToDirectAddrReadHighImm { disp, low_imm },
+                        },
+                        None,
+                    )
                 } else {
                     let imm8 = if low_imm & 0x80 == 0x80 {
                         ((0xFF00 as u16) | (low_imm as u16)) as i16
                     } else {
                         low_imm as i16
                     };
-                    out.push(Instruction::new(
-                        InstructionOperation::MOV,
-                        SrcOperand::Immediate(imm8 as i16),
-                        Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
-                            None, None, disp,
-                        ))),
-                        Some(SizeSpecifier::BYTE),
-                    ));
-                    DecoderState::Init
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            InstructionOperation::MOV,
+                            SrcOperand::Immediate(imm8 as i16),
+                            Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
+                                None, None, disp,
+                            ))),
+                            Some(SizeSpecifier::BYTE),
+                        )),
+                    )
                 }
             }
             MovImmToRegMemState::ToDirectAddrReadHighImm { disp, low_imm } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                out.push(Instruction::new(
-                    InstructionOperation::MOV,
-                    SrcOperand::Immediate(imm16 as i16),
-                    Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
-                        None, None, disp,
-                    ))),
-                    Some(SizeSpecifier::WORD),
-                ));
-                DecoderState::Init
+                (
+                    DecoderState::Init,
+                    Some(Instruction::new(
+                        InstructionOperation::MOV,
+                        SrcOperand::Immediate(imm16 as i16),
+                        Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
+                            None, None, disp,
+                        ))),
+                        Some(SizeSpecifier::WORD),
+                    )),
+                )
             }
             MovImmToRegMemState::ToEffectAddrReadLowDisp {
                 effect_addr,
@@ -1074,21 +1123,27 @@ impl Decoder {
             } => {
                 let low_disp = instruction_byte.clone();
                 if is_disp16 {
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToEffectAddrReadHighDisp {
-                            effect_addr,
-                            low_disp,
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToEffectAddrReadHighDisp {
+                                effect_addr,
+                                low_disp,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToEffectAddrReadLowImm {
-                            effect_addr,
-                            disp: Some(low_disp as i16),
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                                effect_addr,
+                                disp: Some(low_disp as i16),
+                            },
                         },
-                    }
+                        None,
+                    )
                 }
             }
             MovImmToRegMemState::ToEffectAddrReadHighDisp {
@@ -1096,28 +1151,35 @@ impl Decoder {
                 low_disp,
             } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                DecoderState::MovImmToRegMem {
-                    is_word,
-                    state: MovImmToRegMemState::ToEffectAddrReadLowImm {
-                        effect_addr,
-                        disp: Some(disp as i16),
+                (
+                    DecoderState::MovImmToRegMem {
+                        is_word,
+                        state: MovImmToRegMemState::ToEffectAddrReadLowImm {
+                            effect_addr,
+                            disp: Some(disp as i16),
+                        },
                     },
-                }
+                    None,
+                )
             }
             MovImmToRegMemState::ToEffectAddrReadLowImm { effect_addr, disp } => {
                 let low_imm = instruction_byte.clone();
                 if is_word {
-                    DecoderState::MovImmToRegMem {
-                        is_word,
-                        state: MovImmToRegMemState::ToEffectAddrReadHighImm {
-                            effect_addr,
-                            disp,
-                            low_imm,
+                    (
+                        DecoderState::MovImmToRegMem {
+                            is_word,
+                            state: MovImmToRegMemState::ToEffectAddrReadHighImm {
+                                effect_addr,
+                                disp,
+                                low_imm,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
+                    let inst;
                     if let Some(disp) = disp {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Immediate(low_imm as i16),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1128,7 +1190,7 @@ impl Decoder {
                             Some(SizeSpecifier::BYTE),
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Immediate(low_imm as i16),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1139,7 +1201,7 @@ impl Decoder {
                             Some(SizeSpecifier::BYTE),
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
             }
             MovImmToRegMemState::ToEffectAddrReadHighImm {
@@ -1148,8 +1210,9 @@ impl Decoder {
                 low_imm,
             } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
+                let inst;
                 if let Some(disp) = disp {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::Immediate(imm16 as i16),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1160,7 +1223,7 @@ impl Decoder {
                         Some(SizeSpecifier::BYTE),
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         InstructionOperation::MOV,
                         SrcOperand::Immediate(imm16 as i16),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1171,7 +1234,7 @@ impl Decoder {
                         Some(SizeSpecifier::BYTE),
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
         })
     }
@@ -1182,22 +1245,25 @@ impl Decoder {
         acc_to_mem: bool,
         is_word: bool,
         state: MovAccMemToAccMemState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             MovAccMemToAccMemState::ReadAddrLo => {
                 let addr_lo = instruction_byte.clone();
-                DecoderState::MovAccMemToAccMem {
-                    acc_to_mem,
-                    is_word,
-                    state: MovAccMemToAccMemState::ReadAddrHigh { addr_lo },
-                }
+                (
+                    DecoderState::MovAccMemToAccMem {
+                        acc_to_mem,
+                        is_word,
+                        state: MovAccMemToAccMemState::ReadAddrHigh { addr_lo },
+                    },
+                    None,
+                )
             }
             MovAccMemToAccMemState::ReadAddrHigh { addr_lo } => {
                 let addr = ((instruction_byte.clone() as u16) << 8) | (addr_lo as u16);
+                let inst;
                 if acc_to_mem {
                     if is_word {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Register(Register::AX),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1206,7 +1272,7 @@ impl Decoder {
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::Register(Register::AL),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1217,14 +1283,14 @@ impl Decoder {
                     }
                 } else {
                     if is_word {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::MemoryAddressing(MemoryAddressing::new(None, None, addr)),
                             Some(DstOperand::Register(Register::AX)),
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             InstructionOperation::MOV,
                             SrcOperand::MemoryAddressing(MemoryAddressing::new(None, None, addr)),
                             Some(DstOperand::Register(Register::AL)),
@@ -1232,7 +1298,7 @@ impl Decoder {
                         ));
                     }
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
         })
     }
@@ -1392,8 +1458,7 @@ impl Decoder {
         reg_is_dest: bool,
         is_word: bool,
         state: ArithRegMemWithRegToEitherState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             ArithRegMemWithRegToEitherState::Init => match instruction_byte & MOD_MASK {
                 MOD_REG => {
@@ -1405,22 +1470,23 @@ impl Decoder {
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         is_word,
                     )?;
+                    let inst;
                     if reg_is_dest {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Register(rm),
                             Some(DstOperand::Register(reg)),
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Register(reg),
                             Some(DstOperand::Register(rm)),
                             None,
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
                 MOD_MEM_0 => {
                     if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET) == RM_VALUE_DIRECT_ACCESS {
@@ -1428,14 +1494,17 @@ impl Decoder {
                             (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
                             is_word,
                         )?;
-                        DecoderState::ArithRegMemWithRegToEither {
-                            op,
-                            reg_is_dest,
-                            is_word,
-                            state: ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp {
-                                reg,
+                        (
+                            DecoderState::ArithRegMemWithRegToEither {
+                                op,
+                                reg_is_dest,
+                                is_word,
+                                state: ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp {
+                                    reg,
+                                },
                             },
-                        }
+                            None,
+                        )
                     } else {
                         let reg = Register::from_reg_w(
                             (instruction_byte & REG_MASK) >> REG_BIT_OFFSET,
@@ -1444,8 +1513,9 @@ impl Decoder {
                         let rm = EffectiveAddressCalculation::from_rm(
                             (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                         )?;
+                        let inst;
                         if reg_is_dest {
-                            out.push(Instruction::new(
+                            inst = Some(Instruction::new(
                                 op.to_instruction_operation(),
                                 SrcOperand::MemoryAddressing(MemoryAddressing::new(
                                     rm.first_reg(),
@@ -1456,7 +1526,7 @@ impl Decoder {
                                 None,
                             ));
                         } else {
-                            out.push(Instruction::new(
+                            inst = Some(Instruction::new(
                                 op.to_instruction_operation(),
                                 SrcOperand::Register(reg),
                                 Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1467,7 +1537,7 @@ impl Decoder {
                                 None,
                             ));
                         }
-                        DecoderState::Init
+                        (DecoderState::Init, inst)
                     }
                 }
                 mode => {
@@ -1478,19 +1548,22 @@ impl Decoder {
                     let effect_addr = EffectiveAddressCalculation::from_rm(
                         (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
                     )?;
-                    DecoderState::ArithRegMemWithRegToEither {
-                        op,
-                        reg_is_dest,
-                        is_word,
-                        state: ArithRegMemWithRegToEitherState::EffectAddrReadLowDisp {
-                            reg,
-                            effect_addr,
-                            is_disp16: mode == MOD_MEM_2,
+                    (
+                        DecoderState::ArithRegMemWithRegToEither {
+                            op,
+                            reg_is_dest,
+                            is_word,
+                            state: ArithRegMemWithRegToEitherState::EffectAddrReadLowDisp {
+                                reg,
+                                effect_addr,
+                                is_disp16: mode == MOD_MEM_2,
+                            },
                         },
-                    }
+                        None,
+                    )
                 }
             },
-            ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp { reg } => {
+            ArithRegMemWithRegToEitherState::DirectAddressReadLowDisp { reg } => (
                 DecoderState::ArithRegMemWithRegToEither {
                     op,
                     reg_is_dest,
@@ -1499,19 +1572,21 @@ impl Decoder {
                         reg: reg.clone(),
                         low_disp: instruction_byte.clone(),
                     },
-                }
-            }
+                },
+                None,
+            ),
             ArithRegMemWithRegToEitherState::DirectAddressReadHighDisp { reg, low_disp } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp.to_owned() as u16);
+                let inst;
                 if reg_is_dest {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::MemoryAddressing(MemoryAddressing::new(None, None, disp)),
                         Some(DstOperand::Register(reg)),
                         None,
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::Register(reg),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1520,7 +1595,7 @@ impl Decoder {
                         None,
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
             ArithRegMemWithRegToEitherState::EffectAddrReadLowDisp {
                 reg,
@@ -1529,19 +1604,23 @@ impl Decoder {
             } => {
                 let low_disp: u8 = instruction_byte.clone();
                 if is_disp16.to_owned() {
-                    DecoderState::ArithRegMemWithRegToEither {
-                        op,
-                        reg_is_dest,
-                        is_word,
-                        state: ArithRegMemWithRegToEitherState::EffectAddrReadHighDisp {
-                            reg: reg.clone(),
-                            effect_addr: effect_addr.clone(),
-                            low_disp,
+                    (
+                        DecoderState::ArithRegMemWithRegToEither {
+                            op,
+                            reg_is_dest,
+                            is_word,
+                            state: ArithRegMemWithRegToEitherState::EffectAddrReadHighDisp {
+                                reg: reg.clone(),
+                                effect_addr: effect_addr.clone(),
+                                low_disp,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
+                    let inst;
                     if reg_is_dest {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::MemoryAddressing(MemoryAddressing::new(
                                 effect_addr.first_reg(),
@@ -1552,7 +1631,7 @@ impl Decoder {
                             None,
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Register(reg),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1563,7 +1642,7 @@ impl Decoder {
                             None,
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
             }
             ArithRegMemWithRegToEitherState::EffectAddrReadHighDisp {
@@ -1573,7 +1652,7 @@ impl Decoder {
             } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp.clone() as u16);
                 if reg_is_dest {
-                    out.push(Instruction::new(
+                    Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::MemoryAddressing(MemoryAddressing::new(
                             effect_addr.first_reg(),
@@ -1584,7 +1663,7 @@ impl Decoder {
                         None,
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::Register(reg),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1595,7 +1674,7 @@ impl Decoder {
                         None,
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, None)
             }
         })
     }
@@ -1606,8 +1685,7 @@ impl Decoder {
         signed: bool,
         is_word: bool,
         state: ArithImmWithRegMemState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             ArithImmWithRegMemState::Init => match instruction_byte & MOD_MASK {
                 MOD_REG => {
@@ -1619,11 +1697,14 @@ impl Decoder {
                         (instruction_byte & ARITHMETIC_OPERATION_MASK)
                             >> ARITHMETIC_OPERATION_OFFSET,
                     )?;
-                    DecoderState::ArithImmWithRegMem {
-                        is_word,
-                        state: ArithImmWithRegMemState::WithRegReadLowImm { reg: rm, op },
-                        signed,
-                    }
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            is_word,
+                            state: ArithImmWithRegMemState::WithRegReadLowImm { reg: rm, op },
+                            signed,
+                        },
+                        None,
+                    )
                 }
                 MOD_MEM_0 => {
                     if ((instruction_byte & RM_MASK) >> RM_BIT_OFFSET) == RM_VALUE_DIRECT_ACCESS {
@@ -1631,11 +1712,14 @@ impl Decoder {
                             (instruction_byte & ARITHMETIC_OPERATION_MASK)
                                 >> ARITHMETIC_OPERATION_OFFSET,
                         )?;
-                        DecoderState::ArithImmWithRegMem {
-                            is_word,
-                            state: ArithImmWithRegMemState::WithDirectAddrReadLowDisp { op },
-                            signed,
-                        }
+                        (
+                            DecoderState::ArithImmWithRegMem {
+                                is_word,
+                                state: ArithImmWithRegMemState::WithDirectAddrReadLowDisp { op },
+                                signed,
+                            },
+                            None,
+                        )
                     } else {
                         let effect_addr = EffectiveAddressCalculation::from_rm(
                             (instruction_byte & RM_MASK) >> RM_BIT_OFFSET,
@@ -1644,15 +1728,18 @@ impl Decoder {
                             (instruction_byte & ARITHMETIC_OPERATION_MASK)
                                 >> ARITHMETIC_OPERATION_OFFSET,
                         )?;
-                        DecoderState::ArithImmWithRegMem {
-                            is_word,
-                            state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
-                                effect_addr,
-                                disp: None,
-                                op,
+                        (
+                            DecoderState::ArithImmWithRegMem {
+                                is_word,
+                                state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
+                                    effect_addr,
+                                    disp: None,
+                                    op,
+                                },
+                                signed,
                             },
-                            signed,
-                        }
+                            None,
+                        )
                     }
                 }
                 mode => {
@@ -1663,15 +1750,18 @@ impl Decoder {
                         (instruction_byte & ARITHMETIC_OPERATION_MASK)
                             >> ARITHMETIC_OPERATION_OFFSET,
                     )?;
-                    DecoderState::ArithImmWithRegMem {
-                        is_word,
-                        state: ArithImmWithRegMemState::WithEffectAddrReadLowDisp {
-                            op,
-                            effect_addr,
-                            is_disp16: mode == MOD_MEM_2,
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            is_word,
+                            state: ArithImmWithRegMemState::WithEffectAddrReadLowDisp {
+                                op,
+                                effect_addr,
+                                is_disp16: mode == MOD_MEM_2,
+                            },
+                            signed,
                         },
-                        signed,
-                    }
+                        None,
+                    )
                 }
             },
             ArithImmWithRegMemState::WithRegReadLowImm { op, reg } => {
@@ -1682,54 +1772,69 @@ impl Decoder {
                     } else {
                         low_imm as i16
                     };
-                    out.push(Instruction::new(
-                        op.to_instruction_operation(),
-                        SrcOperand::Immediate(imm_sext),
-                        Some(DstOperand::Register(reg)),
-                        None,
-                    ));
-                    DecoderState::Init
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            op.to_instruction_operation(),
+                            SrcOperand::Immediate(imm_sext),
+                            Some(DstOperand::Register(reg)),
+                            None,
+                        )),
+                    )
                 } else if is_word {
-                    DecoderState::ArithImmWithRegMem {
-                        is_word,
-                        state: ArithImmWithRegMemState::WithRegReadHighImm { reg, low_imm, op },
-                        signed,
-                    }
-                } else {
-                    out.push(Instruction::new(
-                        op.to_instruction_operation(),
-                        SrcOperand::Immediate(low_imm as i16),
-                        Some(DstOperand::Register(reg)),
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            is_word,
+                            state: ArithImmWithRegMemState::WithRegReadHighImm { reg, low_imm, op },
+                            signed,
+                        },
                         None,
-                    ));
-                    DecoderState::Init
+                    )
+                } else {
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            op.to_instruction_operation(),
+                            SrcOperand::Immediate(low_imm as i16),
+                            Some(DstOperand::Register(reg)),
+                            None,
+                        )),
+                    )
                 }
             }
             ArithImmWithRegMemState::WithRegReadHighImm { op, reg, low_imm } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                out.push(Instruction::new(
-                    op.to_instruction_operation(),
-                    SrcOperand::Immediate(imm16 as i16),
-                    Some(DstOperand::Register(reg)),
-                    None,
-                ));
-                DecoderState::Init
+                (
+                    DecoderState::Init,
+                    Some(Instruction::new(
+                        op.to_instruction_operation(),
+                        SrcOperand::Immediate(imm16 as i16),
+                        Some(DstOperand::Register(reg)),
+                        None,
+                    )),
+                )
             }
             ArithImmWithRegMemState::WithDirectAddrReadLowDisp { op } => {
                 let low_disp = instruction_byte.clone();
-                DecoderState::ArithImmWithRegMem {
-                    signed,
-                    is_word,
-                    state: ArithImmWithRegMemState::WithDirectAddrReadHighDisp { op, low_disp },
-                }
+                (
+                    DecoderState::ArithImmWithRegMem {
+                        signed,
+                        is_word,
+                        state: ArithImmWithRegMemState::WithDirectAddrReadHighDisp { op, low_disp },
+                    },
+                    None,
+                )
             }
             ArithImmWithRegMemState::WithDirectAddrReadHighDisp { op, low_disp } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                DecoderState::ArithImmWithRegMem {
-                    signed,
-                    is_word,
-                    state: ArithImmWithRegMemState::WithDirectAddrReadLowImm { op, disp },
-                }
+                (
+                    DecoderState::ArithImmWithRegMem {
+                        signed,
+                        is_word,
+                        state: ArithImmWithRegMemState::WithDirectAddrReadLowImm { op, disp },
+                    },
+                    None,
+                )
             }
             ArithImmWithRegMemState::WithDirectAddrReadLowImm { op, disp } => {
                 let low_imm = instruction_byte.clone();
@@ -1739,49 +1844,58 @@ impl Decoder {
                     } else {
                         low_imm as i16
                     };
-                    out.push(Instruction::new(
-                        op.to_instruction_operation(),
-                        SrcOperand::Immediate(imm_sext),
-                        Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
-                            None, None, disp,
-                        ))),
-                        Some(SizeSpecifier::WORD),
-                    ));
-                    DecoderState::Init
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            op.to_instruction_operation(),
+                            SrcOperand::Immediate(imm_sext),
+                            Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
+                                None, None, disp,
+                            ))),
+                            Some(SizeSpecifier::WORD),
+                        )),
+                    )
                 } else if is_word {
-                    DecoderState::ArithImmWithRegMem {
-                        signed,
-                        is_word,
-                        state: ArithImmWithRegMemState::WithDirectAddrReadHighImm {
-                            op,
-                            disp,
-                            low_imm,
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            signed,
+                            is_word,
+                            state: ArithImmWithRegMemState::WithDirectAddrReadHighImm {
+                                op,
+                                disp,
+                                low_imm,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
                     let imm8 = low_imm as i8;
-                    out.push(Instruction::new(
-                        op.to_instruction_operation(),
-                        SrcOperand::Immediate(imm8 as i16),
-                        Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
-                            None, None, disp,
-                        ))),
-                        Some(SizeSpecifier::BYTE),
-                    ));
-                    DecoderState::Init
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            op.to_instruction_operation(),
+                            SrcOperand::Immediate(imm8 as i16),
+                            Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
+                                None, None, disp,
+                            ))),
+                            Some(SizeSpecifier::BYTE),
+                        )),
+                    )
                 }
             }
             ArithImmWithRegMemState::WithDirectAddrReadHighImm { op, disp, low_imm } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                out.push(Instruction::new(
-                    op.to_instruction_operation(),
-                    SrcOperand::Immediate(imm16 as i16),
-                    Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
-                        None, None, disp,
-                    ))),
-                    Some(SizeSpecifier::WORD),
-                ));
-                DecoderState::Init
+                (
+                    DecoderState::Init,
+                    Some(Instruction::new(
+                        op.to_instruction_operation(),
+                        SrcOperand::Immediate(imm16 as i16),
+                        Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
+                            None, None, disp,
+                        ))),
+                        Some(SizeSpecifier::WORD),
+                    )),
+                )
             }
             ArithImmWithRegMemState::WithEffectAddrReadLowDisp {
                 op,
@@ -1790,25 +1904,31 @@ impl Decoder {
             } => {
                 let low_disp = instruction_byte.clone();
                 if is_disp16 {
-                    DecoderState::ArithImmWithRegMem {
-                        signed,
-                        is_word,
-                        state: ArithImmWithRegMemState::WithEffectAddrReadHighDisp {
-                            op,
-                            effect_addr,
-                            low_disp,
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            signed,
+                            is_word,
+                            state: ArithImmWithRegMemState::WithEffectAddrReadHighDisp {
+                                op,
+                                effect_addr,
+                                low_disp,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
-                    DecoderState::ArithImmWithRegMem {
-                        signed,
-                        is_word,
-                        state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
-                            op,
-                            effect_addr,
-                            disp: Some(low_disp as i16),
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            signed,
+                            is_word,
+                            state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
+                                op,
+                                effect_addr,
+                                disp: Some(low_disp as i16),
+                            },
                         },
-                    }
+                        None,
+                    )
                 }
             }
             ArithImmWithRegMemState::WithEffectAddrReadHighDisp {
@@ -1817,15 +1937,18 @@ impl Decoder {
                 low_disp,
             } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp as u16);
-                DecoderState::ArithImmWithRegMem {
-                    signed,
-                    is_word,
-                    state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
-                        op,
-                        effect_addr,
-                        disp: Some(disp as i16),
+                (
+                    DecoderState::ArithImmWithRegMem {
+                        signed,
+                        is_word,
+                        state: ArithImmWithRegMemState::WithEffectAddrReadLowImm {
+                            op,
+                            effect_addr,
+                            disp: Some(disp as i16),
+                        },
                     },
-                }
+                    None,
+                )
             }
             ArithImmWithRegMemState::WithEffectAddrReadLowImm {
                 op,
@@ -1839,8 +1962,9 @@ impl Decoder {
                     } else {
                         low_imm as i16
                     };
+                    let inst;
                     if let Some(disp) = disp {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Immediate(imm_sext),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1851,7 +1975,7 @@ impl Decoder {
                             Some(SizeSpecifier::WORD),
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Immediate(imm_sext),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1862,21 +1986,25 @@ impl Decoder {
                             Some(SizeSpecifier::WORD),
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 } else if is_word {
-                    DecoderState::ArithImmWithRegMem {
-                        signed,
-                        is_word,
-                        state: ArithImmWithRegMemState::WithEffectAddrReadHighImm {
-                            op,
-                            effect_addr,
-                            disp,
-                            low_imm,
+                    (
+                        DecoderState::ArithImmWithRegMem {
+                            signed,
+                            is_word,
+                            state: ArithImmWithRegMemState::WithEffectAddrReadHighImm {
+                                op,
+                                effect_addr,
+                                disp,
+                                low_imm,
+                            },
                         },
-                    }
+                        None,
+                    )
                 } else {
+                    let inst;
                     if let Some(disp) = disp {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Immediate(low_imm as i16),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1887,7 +2015,7 @@ impl Decoder {
                             Some(SizeSpecifier::BYTE),
                         ));
                     } else {
-                        out.push(Instruction::new(
+                        inst = Some(Instruction::new(
                             op.to_instruction_operation(),
                             SrcOperand::Immediate(low_imm as i16),
                             Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1898,7 +2026,7 @@ impl Decoder {
                             Some(SizeSpecifier::BYTE),
                         ));
                     }
-                    DecoderState::Init
+                    (DecoderState::Init, inst)
                 }
             }
             ArithImmWithRegMemState::WithEffectAddrReadHighImm {
@@ -1908,8 +2036,9 @@ impl Decoder {
                 low_imm,
             } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
+                let inst;
                 if let Some(disp) = disp {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::Immediate(imm16 as i16),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1920,7 +2049,7 @@ impl Decoder {
                         Some(SizeSpecifier::WORD),
                     ));
                 } else {
-                    out.push(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::Immediate(imm16 as i16),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1931,7 +2060,7 @@ impl Decoder {
                         Some(SizeSpecifier::WORD),
                     ));
                 }
-                DecoderState::Init
+                (DecoderState::Init, inst)
             }
         })
     }
@@ -1942,36 +2071,42 @@ impl Decoder {
         op: ArithOperation,
         is_word: bool,
         state: ArithImmToAccState,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
         Ok(match state {
             ArithImmToAccState::Init => {
                 let low_imm = instruction_byte;
                 if is_word {
-                    DecoderState::ArithImmToAcc {
-                        op,
-                        is_word,
-                        state: ArithImmToAccState::ReadHighImm { low_imm },
-                    }
-                } else {
-                    out.push(Instruction::new(
-                        op.to_instruction_operation(),
-                        SrcOperand::Immediate(low_imm as i16),
-                        Some(DstOperand::Register(Register::AL)),
+                    (
+                        DecoderState::ArithImmToAcc {
+                            op,
+                            is_word,
+                            state: ArithImmToAccState::ReadHighImm { low_imm },
+                        },
                         None,
-                    ));
-                    DecoderState::Init
+                    )
+                } else {
+                    (
+                        DecoderState::Init,
+                        Some(Instruction::new(
+                            op.to_instruction_operation(),
+                            SrcOperand::Immediate(low_imm as i16),
+                            Some(DstOperand::Register(Register::AL)),
+                            None,
+                        )),
+                    )
                 }
             }
             ArithImmToAccState::ReadHighImm { low_imm } => {
                 let imm16 = ((instruction_byte.clone() as u16) << 8) | (low_imm as u16);
-                out.push(Instruction::new(
-                    op.to_instruction_operation(),
-                    SrcOperand::Immediate(imm16 as i16),
-                    Some(DstOperand::Register(Register::AX)),
-                    None,
-                ));
-                DecoderState::Init
+                (
+                    DecoderState::Init,
+                    Some(Instruction::new(
+                        op.to_instruction_operation(),
+                        SrcOperand::Immediate(imm16 as i16),
+                        Some(DstOperand::Register(Register::AX)),
+                        None,
+                    )),
+                )
             }
         })
     }
@@ -1980,21 +2115,32 @@ impl Decoder {
         &mut self,
         instruction_byte: u8,
         jmp: ConditionalJump,
-        out: &mut Vec<Instruction>,
-    ) -> DecoderResult<DecoderState> {
-        let ip_inc8 = instruction_byte as i8 + 2;
-        out.push(Instruction::new(
-            jmp.to_instruction_operation(),
-            SrcOperand::RelativePosition(ip_inc8),
-            None,
-            None,
-        ));
-        Ok(DecoderState::Init)
+    ) -> DecoderResult<(DecoderState, Option<Instruction>)> {
+        let ip_inc8 = instruction_byte as i8;
+        Ok((
+            DecoderState::Init,
+            Some(Instruction::new(
+                jmp.to_instruction_operation(),
+                SrcOperand::RelativePosition(ip_inc8),
+                None,
+                None,
+            )),
+        ))
     }
 
-    pub fn decode(&mut self, input: &[u8], out: &mut Vec<Instruction>) -> DecoderResult<()> {
-        for instruction_byte in input.into_iter() {
-            self.state = match self.state {
+    pub fn decode(
+        &mut self,
+        memory: &[u8],
+        instruction_pointer: usize,
+    ) -> DecoderResult<(Option<Instruction>, usize)> {
+        let mut ip = instruction_pointer;
+        loop {
+            if ip >= memory.len() {
+                break;
+            }
+            let instruction_byte = memory[ip];
+            let inst;
+            (self.state, inst) = match self.state {
                 DecoderState::Init => self.decode_init(instruction_byte.clone())?,
                 DecoderState::MovRegMemToFromReg {
                     reg_is_dest,
@@ -2005,10 +2151,9 @@ impl Decoder {
                     reg_is_dest,
                     is_word,
                     state,
-                    out,
                 )?,
                 DecoderState::MovImmToRegMem { is_word, state } => {
-                    self.decode_mov_imm_to_reg_mem(instruction_byte.clone(), is_word, state, out)?
+                    self.decode_mov_imm_to_reg_mem(instruction_byte.clone(), is_word, state)?
                 }
                 DecoderState::MovAccMemToAccMem {
                     acc_to_mem,
@@ -2019,7 +2164,6 @@ impl Decoder {
                     acc_to_mem,
                     is_word,
                     state,
-                    out,
                 )?,
                 DecoderState::MovRegMemSRToRegMemSR { to_sr: _, state: _ } => {
                     todo!()
@@ -2042,7 +2186,6 @@ impl Decoder {
                     reg_is_dest,
                     is_word,
                     state,
-                    out,
                 )?,
                 DecoderState::ArithImmWithRegMem {
                     signed,
@@ -2053,16 +2196,19 @@ impl Decoder {
                     signed,
                     is_word,
                     state,
-                    out,
                 )?,
                 DecoderState::ArithImmToAcc { op, is_word, state } => {
-                    self.decode_arith_imm_to_acc(instruction_byte.clone(), op, is_word, state, out)?
+                    self.decode_arith_imm_to_acc(instruction_byte.clone(), op, is_word, state)?
                 }
                 DecoderState::CondJump { jmp } => {
-                    self.decode_conditional_jump(instruction_byte.clone(), jmp, out)?
+                    self.decode_conditional_jump(instruction_byte.clone(), jmp)?
                 }
+            };
+            ip += 1;
+            if inst.is_some() {
+                return Ok((inst, ip));
             }
         }
-        Ok(())
+        Ok((None, ip))
     }
 }

@@ -16,27 +16,22 @@ fn main() -> DecoderResult<()> {
     let mut runtime = Runtime::new();
 
     let filename = &args[1];
-    let mut buffer = [0u8; 1024];
     let mut file = File::open(filename)?;
-    let mut out = io::BufWriter::new(io::stdout().lock());
-    out.write_all(format!("; {filename}\nbits 16\n\n").as_bytes())?;
+    print!("; {filename}\nbits 16\n\n");
     let mut decoder = Decoder::new();
-    let mut instructions = vec![];
+    file.read_to_end(runtime.instruction_memory())?;
     loop {
-        let n_bytes = file.read(&mut buffer)?;
-        if n_bytes == 0 {
+        let ip = runtime.ip();
+        let (inst, ip) = decoder.decode(runtime.instruction_memory(), ip)?;
+        if let Some(inst) = inst {
+            runtime.set_ip(ip);
+            print!("{inst}\n");
+            runtime.execute(&inst);
+            // runtime.print_registers();
+        }
+        if runtime.ip() >= runtime.instruction_memory().len() {
             break;
         }
-        let data = &buffer[0..n_bytes];
-        decoder.decode(data, &mut instructions)?;
-        for instruction in instructions.iter() {
-            write!(out, "{instruction}\n")?;
-            runtime.execute(instruction);
-            write!(out, "\n")?;
-            runtime.print_registers(&mut out).unwrap();
-        }
     }
-    // write!(out, "\n")?;
-    // runtime.print_registers(&mut out).unwrap();
     Ok(())
 }

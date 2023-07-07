@@ -148,7 +148,7 @@ impl Display for SrcOperand {
                 write!(f, "{imm}")
             }
             SrcOperand::RelativePosition(rel_pos) => {
-                write!(f, "${rel_pos:+}")
+                write!(f, "${:+}", rel_pos + 2)
             }
         }
     }
