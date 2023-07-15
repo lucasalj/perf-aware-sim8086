@@ -52,9 +52,9 @@ pub enum SrcOperand {
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryAddressing {
-    reg_first_operand: Option<Register>,
-    reg_sec_operand: Option<Register>,
-    disp: u16,
+    pub reg_first_operand: Option<Register>,
+    pub reg_sec_operand: Option<Register>,
+    pub disp: u16,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -21,17 +21,26 @@ fn main() -> DecoderResult<()> {
     let mut decoder = Decoder::new();
     file.read_to_end(runtime.instruction_memory())?;
     loop {
+        //{
+        //    let mut buf = String::new();
+        //    io::stdin().read_line(&mut buf)?;
+        //}
         let ip = runtime.ip();
         let (inst, ip) = decoder.decode(runtime.instruction_memory(), ip)?;
         if let Some(inst) = inst {
             runtime.set_ip(ip);
-            print!("{inst}\n");
+            // print!("{inst}\n");
             runtime.execute(&inst);
             // runtime.print_registers();
         }
         if runtime.ip() >= runtime.instruction_memory().len() {
             break;
         }
+    }
+    runtime.print_registers();
+    if args.len() >= 3 {
+        let fname = args[2].as_str();
+        runtime.dump_memory_to_file(fname)?;
     }
     Ok(())
 }

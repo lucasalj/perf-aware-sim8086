@@ -1,4 +1,7 @@
-use std::io::{BufWriter, Write};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 use super::instruction::*;
 
@@ -6,6 +9,7 @@ use super::instruction::*;
 pub struct Runtime {
     gen_reg: [u16; 8],
     instruction_memory: Vec<u8>,
+    main_memory: [u8; 1048576],
     zero_flag: bool,
     signal_flag: bool,
     instruction_pointer: usize,
@@ -23,6 +27,7 @@ impl Runtime {
         Self {
             gen_reg: [0u16; 8],
             instruction_memory: Vec::new(),
+            main_memory: [0u8; 1048576],
             zero_flag: false,
             signal_flag: false,
             instruction_pointer: 0,
@@ -123,24 +128,94 @@ impl Runtime {
         &mut self,
         src: SrcOperand,
         dst: Option<DstOperand>,
-        _size_specifier: Option<SizeSpecifier>,
+        size_specifier: Option<SizeSpecifier>,
     ) {
         match src {
-            SrcOperand::Register(src_reg) => match dst {
-                Some(dst) => match dst {
-                    DstOperand::Register(reg) => {
-                        let val = self.load_reg(src_reg);
-                        self.store_reg(reg, val)
-                    }
-                    DstOperand::MemoryAddressing(_) => todo!(),
-                },
-                None => todo!(),
-            },
-            SrcOperand::MemoryAddressing(_) => todo!(),
+            SrcOperand::Register(src_reg) => {
+                let val = self.load_reg(src_reg);
+                match dst {
+                    Some(dst) => match dst {
+                        DstOperand::Register(reg) => self.store_reg(reg, val),
+                        DstOperand::MemoryAddressing(MemoryAddressing {
+                            reg_first_operand,
+                            reg_sec_operand,
+                            disp,
+                        }) => {
+                            let addr = reg_first_operand.map_or(0, |reg| self.load_reg(reg))
+                                + reg_sec_operand.map_or(0, |reg| self.load_reg(reg))
+                                + disp;
+                            self.main_memory[addr as usize] = (val & 0xFF) as u8;
+                            self.main_memory[(addr + 1) as usize] = ((val & 0xFF00) >> 8) as u8;
+                        }
+                    },
+                    None => todo!(),
+                }
+            }
+            SrcOperand::MemoryAddressing(MemoryAddressing {
+                reg_first_operand,
+                reg_sec_operand,
+                disp,
+            }) => {
+                let addr = reg_first_operand.map_or(0, |reg| self.load_reg(reg))
+                    + reg_sec_operand.map_or(0, |reg| self.load_reg(reg))
+                    + disp;
+
+                match dst {
+                    Some(dst) => match dst {
+                        DstOperand::Register(reg) => {
+                            if let Some(size) = size_specifier {
+                                match size {
+                                    SizeSpecifier::BYTE => {
+                                        let mut val: u16 = self.main_memory[addr as usize] as u16;
+                                        val |= self.load_reg(reg) & 0xFF00;
+                                        self.store_reg(reg, val);
+                                    }
+                                    SizeSpecifier::WORD => {
+                                        let mut val: u16 = self.main_memory[addr as usize] as u16;
+                                        val |= ((self.main_memory[(addr + 1) as usize] as u16)
+                                            << 8)
+                                            & 0xFF00;
+                                        self.store_reg(reg, val);
+                                    }
+                                }
+                                return;
+                            }
+                            let mut val: u16 = self.main_memory[addr as usize] as u16;
+                            val |= ((self.main_memory[(addr + 1) as usize] as u16) << 8) & 0xFF00;
+                            self.store_reg(reg, val);
+                        }
+                        DstOperand::MemoryAddressing(_) => todo!(),
+                    },
+                    None => todo!(),
+                }
+            }
             SrcOperand::Immediate(imm) => match dst {
                 Some(dst) => match dst {
                     DstOperand::Register(reg) => self.store_reg(reg, imm as u16),
-                    DstOperand::MemoryAddressing(_) => todo!(),
+                    DstOperand::MemoryAddressing(MemoryAddressing {
+                        reg_first_operand,
+                        reg_sec_operand,
+                        disp,
+                    }) => {
+                        let addr = reg_first_operand.map_or(0, |reg| self.load_reg(reg))
+                            + reg_sec_operand.map_or(0, |reg| self.load_reg(reg))
+                            + disp;
+                        if let Some(size) = size_specifier {
+                            match size {
+                                SizeSpecifier::BYTE => {
+                                    self.main_memory[addr as usize] = (imm & 0xFF) as u8;
+                                }
+                                SizeSpecifier::WORD => {
+                                    self.main_memory[addr as usize] = (imm & 0xFF) as u8;
+                                    self.main_memory[(addr + 1) as usize] =
+                                        ((imm >> 8) & 0xFF) as u8;
+                                }
+                            }
+                            return;
+                        }
+                        self.main_memory[addr as usize] = (imm & 0xFF) as u8;
+                        self.main_memory[(addr + 1) as usize] = ((imm >> 8) & 0xFF) as u8;
+                    }
                 },
                 None => todo!(),
             },
@@ -159,7 +234,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val += self.load_reg(src_reg);
+                        val = val.wrapping_add(self.load_reg(src_reg));
                         self.store_reg(dst_reg, val);
                         self.set_flags(val);
                     }
@@ -172,7 +247,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val += imm as u16;
+                        val = val.wrapping_add(imm as u16);
                         self.store_reg(dst_reg, val);
                         self.set_flags(val);
                     }
@@ -195,7 +270,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val -= self.load_reg(src_reg);
+                        val = val.wrapping_sub(self.load_reg(src_reg));
                         self.store_reg(dst_reg, val);
                         self.set_flags(val);
                     }
@@ -208,7 +283,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val -= imm as u16;
+                        val = val.wrapping_sub(imm as u16);
                         self.store_reg(dst_reg, val);
                         self.set_flags(val);
                     }
@@ -231,7 +306,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val += self.load_reg(src_reg);
+                        val = val.wrapping_sub(self.load_reg(src_reg));
                         self.set_flags(val);
                     }
                     DstOperand::MemoryAddressing(_) => todo!(),
@@ -243,7 +318,7 @@ impl Runtime {
                 Some(dst) => match dst {
                     DstOperand::Register(dst_reg) => {
                         let mut val = self.load_reg(dst_reg);
-                        val -= imm as u16;
+                        val = val.wrapping_sub(imm as u16);
                         self.set_flags(val);
                     }
                     DstOperand::MemoryAddressing(_) => todo!(),
@@ -346,14 +421,20 @@ impl Runtime {
     }
 
     pub fn print_registers(&self) {
-        print!("-------------\n");
+        println!("-------------");
         for reg_idx in 0..self.gen_reg.len() {
             let reg = Runtime::index_to_reg(reg_idx);
-            print!("{reg}: 0x{:04x}\n", self.gen_reg[reg_idx]);
+            println!("{reg}: 0x{:04x}", self.gen_reg[reg_idx]);
         }
-        print!("ZF: {}\n", self.zero_flag as u32);
-        print!("SF: {}\n", self.signal_flag as u32);
-        print!("IP: {}\n", self.instruction_pointer as u32);
-        print!("-------------\n\n");
+        println!("ZF: {}", self.zero_flag as u32);
+        println!("SF: {}", self.signal_flag as u32);
+        println!("IP: {}", self.instruction_pointer as u32);
+        println!("-------------\n");
+    }
+
+    pub fn dump_memory_to_file(&self, fname: &str) -> std::io::Result<()> {
+        let mut f = File::create(fname)?;
+        f.write_all(&self.main_memory)?;
+        Ok(())
     }
 }
