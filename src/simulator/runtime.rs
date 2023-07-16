@@ -230,18 +230,33 @@ impl Runtime {
         _size_specifier: Option<SizeSpecifier>,
     ) {
         match src {
-            SrcOperand::Register(src_reg) => match dst {
-                Some(dst) => match dst {
-                    DstOperand::Register(dst_reg) => {
-                        let mut val = self.load_reg(dst_reg);
-                        val = val.wrapping_add(self.load_reg(src_reg));
-                        self.store_reg(dst_reg, val);
-                        self.set_flags(val);
-                    }
-                    DstOperand::MemoryAddressing(_) => todo!(),
-                },
-                None => todo!(),
-            },
+            SrcOperand::Register(src_reg) => {
+                let mut val = self.load_reg(src_reg);
+                match dst {
+                    Some(dst) => match dst {
+                        DstOperand::Register(dst_reg) => {
+                            val = val.wrapping_add(self.load_reg(dst_reg));
+                            self.store_reg(dst_reg, val);
+                            self.set_flags(val);
+                        }
+                        DstOperand::MemoryAddressing(MemoryAddressing {
+                            reg_first_operand,
+                            reg_sec_operand,
+                            disp,
+                        }) => {
+                            let addr = reg_first_operand.map_or(0, |reg| self.load_reg(reg))
+                                + reg_sec_operand.map_or(0, |reg| self.load_reg(reg))
+                                + disp;
+                            val += (self.main_memory[addr as usize] as u16)
+                                | ((self.main_memory[(addr + 1) as usize] as u16) << 8);
+                            self.main_memory[addr as usize] = (val & 0xFF) as u8;
+                            self.main_memory[(addr + 1) as usize] = ((val & 0xFF00) >> 8) as u8;
+                            self.set_flags(val);
+                        }
+                    },
+                    None => todo!(),
+                }
+            }
             SrcOperand::MemoryAddressing(_) => todo!(),
             SrcOperand::Immediate(imm) => match dst {
                 Some(dst) => match dst {

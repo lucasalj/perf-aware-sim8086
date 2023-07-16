@@ -57,7 +57,7 @@ pub struct MemoryAddressing {
     pub disp: u16,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Register {
     AL,
     CL,

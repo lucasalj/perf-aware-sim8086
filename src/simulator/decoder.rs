@@ -1651,8 +1651,9 @@ impl Decoder {
                 low_disp,
             } => {
                 let disp = ((instruction_byte.clone() as u16) << 8) | (low_disp.clone() as u16);
+                let inst;
                 if reg_is_dest {
-                    Some(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::MemoryAddressing(MemoryAddressing::new(
                             effect_addr.first_reg(),
@@ -1663,7 +1664,7 @@ impl Decoder {
                         None,
                     ));
                 } else {
-                    Some(Instruction::new(
+                    inst = Some(Instruction::new(
                         op.to_instruction_operation(),
                         SrcOperand::Register(reg),
                         Some(DstOperand::MemoryAddressing(MemoryAddressing::new(
@@ -1674,7 +1675,7 @@ impl Decoder {
                         None,
                     ));
                 }
-                (DecoderState::Init, None)
+                (DecoderState::Init, inst)
             }
         })
     }
